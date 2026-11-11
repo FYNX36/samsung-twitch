@@ -122,6 +122,7 @@
     var root = dom.create('div', 'tw-scene', '');
     root.id = 'tw-browser';
     root.innerHTML =
+      '<div class="tw-home-backdrop" id="tw-home-backdrop"></div>' +
       '<div class="tw-topbar">' +
         '<img class="tw-logo" src="assets/logo.png" alt="">' +
         '<div class="tw-account" id="tw-account"><span id="tw-acct-label"></span></div>' +
@@ -317,11 +318,15 @@
     this.hc = 0;
     this.homeScroll = 0;
     this.homeFocused = false;
+    this.homeHeroFollowingIndex = 0;
     this.items = [];
     this.cells = [];
     this.rowEls = [];
     this.cursor = null;
     dom.html(dom.get('tw-home'), '');
+    dom.html(dom.get('tw-home-backdrop'), '');
+    this.homeHeroArt = null;
+    this.homeHeroCopy = null;
     this.setScroll(0);
     this.hideFrame();
   };
@@ -416,7 +421,7 @@
 
     if (this.onTopNav) { return; }
     if (!this.homeRows.length) { return; }
-      
+
     this.homeFocused = true;
     this.clampHomeCursor();
     this.homeAddFocus();
@@ -478,20 +483,77 @@
     });
   };
 
+  
+  // Task 04B.2: hero is presentation only; it does not change rail focus.
   P.renderHome = function () {
     var home = dom.get('tw-home');
     dom.html(home, '');
+    var backdrop = dom.get('tw-home-backdrop');
+    dom.html(backdrop, '');
     this.homeRows = [];
+    this.homeHeroArt = null;
+    this.homeHeroCopy = null;
+
+    var featured = this.homeFollowing.length
+      ? (this.homeFollowing[this.homeHeroFollowingIndex || 0] || this.homeFollowing[0])
+      : this.homeDiscover[0];
+
+    if (featured) {
+      var hero = dom.create('div', 'tw-home-hero');
+      var art = dom.create('div', 'tw-home-hero-art');
+      var shade = dom.create('div', 'tw-home-hero-shade');
+      var copy = dom.create('div', 'tw-home-hero-copy');
+      backdrop.appendChild(art);
+      backdrop.appendChild(shade);
+      hero.appendChild(copy);
+      home.appendChild(hero);
+      this.homeHeroArt = art;
+      this.homeHeroCopy = copy;
+      this.updateHomeHero(featured);
+    }
+
     if (this.homeFollowing.length) {
-      this.appendHomeRail(home, TW.i18n.t('FOLLOW_LIVE'), this.homeFollowing, 'following');
+      this.appendHomeRail(home, 'Following · Live', this.homeFollowing, 'following');
     }
     if (this.homeDiscover.length) {
-      this.appendHomeRail(home, 'Discover live channels', this.homeDiscover, 'discover');
+      this.appendHomeRail(home, 'Discover', this.homeDiscover, 'discover');
     }
     if (this.homeRows.length) { this.clampHomeCursor(); }
   };
 
-  P.clampHomeCursor = function () {
+  P.updateHomeHero = function (item) {
+    if (!item || !this.homeHeroArt || !this.homeHeroCopy) { return; }
+
+    var preview = String(item.thumb || '').replace('-320x180.jpg', '-1280x720.jpg');
+    if (/^https?:\/\//i.test(preview)) {
+      this.homeHeroArt.style.backgroundImage =
+        'url("' + preview.replace(/["\\\r\n]/g, '') + '")';
+    } else {
+      this.homeHeroArt.style.backgroundImage = 'none';
+    }
+
+    // Followed Helix streams provide gameBox. Discover fallback uses game name.
+    var gameBox = item.gameBox || (item.game
+      ? 'https://static-cdn.jtvnw.net/ttv-boxart/' + encodeURIComponent(item.game) + '-285x380.jpg'
+      : '');
+    var coverHtml = /^https?:\/\//i.test(gameBox)
+      ? '<img class="tw-home-hero-cover" src="' + dom.escape(gameBox) + '" alt="" onerror="this.style.display=\'none\'">'
+      : '';
+
+    this.homeHeroCopy.innerHTML =
+      coverHtml +
+      '<div class="tw-home-hero-details">' +
+        '<div class="tw-home-hero-live">JETZT LIVE</div>' +
+        '<div class="tw-home-hero-name">' +
+          dom.escape(item.display || item.login || '') + '</div>' +
+        '<div class="tw-home-hero-title">' + dom.escape(item.title || '') + '</div>' +
+        (item.game
+          ? '<div class="tw-home-hero-game">' + dom.escape(item.game) + '</div>'
+          : '') +
+      '</div>';
+  };
+
+P.clampHomeCursor = function () {
     if (this.hr > this.homeRows.length - 1) { this.hr = this.homeRows.length - 1; }
     if (this.hr < 0) { this.hr = 0; }
     var row = this.homeRows[this.hr];
@@ -553,7 +615,9 @@
   P.homeScrollTo = function () {
     var row = this.homeRows[this.hr];
     if (!row) { return; }
-    var off = offsetTopWithin(row.el, dom.get('tw-home')) - 46;
+    var off = this.hr === 0
+      ? 0
+      : offsetTopWithin(row.el, dom.get('tw-home')) - 46;
     if (off < 0) { off = 0; }
     var max = this.homeScrollMax();
     if (off > max) { off = max; }
@@ -574,6 +638,10 @@
     var cell = this.homeCell();
     var row = this.homeRows[this.hr];
     if (!cell || !row) { return; }
+    if (row.id === 'following') {
+      this.homeHeroFollowingIndex = this.hc;
+      this.updateHomeHero(row.items[this.hc]);
+    }
     dom.addClass(cell.firstChild, 'tw-focused');
     this.hideFrame();
     this.homeRailScrollTo(row);
@@ -748,6 +816,10 @@
   P.syncGridInset = function () {
     var wrap = dom.get('tw-grid-wrap');
     if (!wrap) { return; }
+    var backdrop = dom.get('tw-home-backdrop');
+    if (backdrop) {
+      backdrop.style.display = this.mode === MODE.ALL ? 'block' : 'none';
+    }
     dom.removeClass(wrap, 'tw-grid-wrap-games');
     dom.removeClass(wrap, 'tw-grid-wrap-category');
     if (this.mode === MODE.GAMES) { dom.addClass(wrap, 'tw-grid-wrap-games'); }
@@ -901,38 +973,44 @@
     var views = isHomeStream ? homepageViewerCount(item.viewers) : TW.shortNumber(item.viewers);
     var category = dom.escape(item.game || '');
     if (isHomeStream) {
-      var avatarSrc = item.avatar ? ' src="' + dom.escape(item.avatar) + '"' : '';
-      td.innerHTML =
-        '<div class="tw-cell-inner tw-home-stream-card">' +
-          '<div class="tw-home-thumb-wrap">' +
-            '<img class="tw-thumb"' + imgSize + imgSrc + ' alt="" onerror="this.removeAttribute(\'src\')">' +
-            '<span class="tw-home-live-badge">LIVE</span>' +
-            (views ? '<span class="tw-home-viewers">' + views + '</span>' : '') +
-          '</div>' +
-          '<div class="tw-meta tw-home-meta">' +
-            '<img class="tw-home-avatar tw-home-avatar-ph" width="38" height="38"' + avatarSrc + ' alt="" onerror="this.removeAttribute(\'src\')">' +
-            '<div class="tw-home-meta-primary">' +
-              (category ? '<span class="tw-home-meta-category">' + category + '</span>' : '') +
-              '<span class="tw-home-meta-name">' + name + '</span>' +
-            '</div>' +
-            '<div class="tw-home-meta-title">' + title + '</div>' +
-          '</div>' +
-        '</div>';
-      return td;
-    }
+      
+    var avatarSrc = item.avatar ? ' src="' + dom.escape(item.avatar) + '"' : '';
     td.innerHTML =
-      '<div class="tw-cell-inner">' +
-        '<img class="tw-thumb"' + imgSize + imgSrc + ' alt="" onerror="this.removeAttribute(\'src\')">' +
-        '<div class="tw-meta">' +
-          (!isGame ? '<div class="tw-meta-title"><span class="tw-live-badge">LIVE</span>' + title + '</div>' : '') +
-          '<div class="tw-meta-row">' +
-            '<span class="tw-meta-views">' + views + '</span>' +
-            '<span class="tw-meta-name">' + name + '</span>' +
+      '<div class="tw-cell-inner tw-home-stream-card">' +
+        '<div class="tw-home-thumb-wrap">' +
+          '<img class="tw-thumb"' + imgSize + imgSrc + ' alt="" onerror="this.removeAttribute(\'src\')">' +
+          '<span class="tw-home-live-badge">LIVE</span>' +
+          (views ? '<span class="tw-home-viewers">' + views + '</span>' : '') +
+        '</div>' +
+        '<div class="tw-meta tw-home-meta">' +
+          '<img class="tw-home-avatar tw-home-avatar-ph" width="38" height="38"' + avatarSrc + ' alt="" onerror="this.removeAttribute(\'src\')">' +
+          '<div class="tw-home-meta-primary">' +
+            '<span class="tw-home-meta-name">' + name + '</span>' +
           '</div>' +
+          '<div class="tw-home-meta-title">' + title + '</div>' +
+          (category
+            ? '<div class="tw-home-meta-category">' + category + '</div>'
+            : '') +
         '</div>' +
       '</div>';
     return td;
-  };
+  }  // Schließt if (isHomeStream)
+
+  // Hier folgt der normale createCell-Code für andere Karten.
+  td.innerHTML =
+    '<div class="tw-cell-inner">' +
+      '<img class="tw-thumb"' + imgSize + imgSrc + ' alt="" onerror="this.removeAttribute(\'src\')">' +
+      '<div class="tw-meta">' +
+        (!isGame ? '<div class="tw-meta-title"><span class="tw-live-badge">LIVE</span>' + title + '</div>' : '') +
+        '<div class="tw-meta-row">' +
+          '<span class="tw-meta-views">' + views + '</span>' +
+          '<span class="tw-meta-name">' + name + '</span>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+
+  return td;
+};
 
   P.indexOfCursor = function () { return this.y * TW.config.columns + this.x; };
   P.focusedCell = function () { return this.cells[this.indexOfCursor()]; };

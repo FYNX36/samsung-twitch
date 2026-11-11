@@ -94,14 +94,47 @@
     return { items: items, cursor: lastCursor };
   }
 
+  var streamAvatarQueryUnsupported = false;
+
   var backend = {
     name: 'gql',
 
+
     topStreams: function (limit, cursor, onOk, onFail) {
-      post('{ streams(first: ' + cap(limit) + afterClause(cursor) + ') { edges { cursor node { ' +
-        'id title viewersCount broadcaster { login displayName } game { name } } } }',
-        function (data) { onOk(mapStreamEdges(data.streams)); }, onFail);
+      var prefix = '{ streams(first: ' + cap(limit) +
+        afterClause(cursor) + ') { edges { cursor node { ';
+    
+      var suffix = ' game { name } } } } }';
+    
+      var basicQuery = prefix +
+        'id title viewersCount broadcaster { login displayName }' +
+        suffix;
+    
+      function success(data) {
+        onOk(mapStreamEdges(data.streams));
+      }
+    
+      if (streamAvatarQueryUnsupported) {
+        post(basicQuery, success, onFail);
+        return;
+      }
+    
+      var avatarQuery = prefix +
+        'id title viewersCount broadcaster { ' +
+        'login displayName profileImageURL(width: 70) }' +
+        suffix;
+    
+      post(avatarQuery, success, function (status, response, errors) {
+        if (errors && errors.length) {
+          streamAvatarQueryUnsupported = true;
+        }
+      
+        // Avatar lookup is optional: never sacrifice Discover.
+        post(basicQuery, success, onFail);
+      });
     },
+
+    
 
     topGames: function (limit, cursor, onOk, onFail) {
       post('{ games(first: ' + cap(limit) + afterClause(cursor) + ') { edges { cursor node { ' +

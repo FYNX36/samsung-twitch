@@ -627,3 +627,349 @@ html, body {
 }
 @-webkit-keyframes tw-spin { 0% { -webkit-transform: rotate(0); } 100% { -webkit-transform: rotate(360deg); } }
 @keyframes tw-spin { 0% { transform: rotate(0); } 100% { transform: rotate(360deg); } }
+
+/* =========================================================
+   Minimal Cinema — Task 03D.1
+   Cinematic homepage rail geometry
+   Scoped exclusively to Channels homepage.
+   ========================================================= */
+
+/* 35px outer wrapper + 9px inset = 44px stage margin. */
+.tw-home {
+  margin-left: 9px;
+  margin-right: 9px;
+}
+
+/* 362px cell = 344px thumbnail + 18px gap. */
+.tw-home .tw-grid-rail .tw-cell {
+  width: 362px;
+  padding: 8px 18px 18px 0;
+  box-sizing: border-box;
+}
+
+/* Larger 16:9 stream thumbnails. */
+.tw-home .tw-home-thumb-wrap .tw-thumb {
+  width: 100%;
+  height: 194px;
+}
+
+/* Align section headings with the thumbnails. */
+.tw-home .tw-sec-head {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* Fitch — Task 03D.2: homepage metadata */
+
+.tw-home .tw-meta.tw-home-meta {
+  height: 82px;
+  padding: 7px 10px 8px 58px;
+}
+
+.tw-home .tw-home-meta-title {
+  margin-top: 2px;
+}
+
+.tw-home .tw-home-meta-category {
+  display: block;
+  float: none;
+  max-width: 100%;
+  margin: 2px 0 0;
+  line-height: 16px;
+  font-size: 12px;
+  text-align: left;
+}
+
+.tw-home .tw-home-avatar {
+  top: 21px;
+}
+
+/* =========================================================
+   Fitch — Task 03E.1
+   Categories: typography and spacing
+   ========================================================= */
+
+.tw-grid-wrap-games .tw-cell-game .tw-meta {
+  padding: 12px 11px 14px;
+}
+
+.tw-grid-wrap-games .tw-cell-game .tw-meta-row {
+  line-height: 24px;
+}
+
+.tw-grid-wrap-games .tw-cell-game .tw-meta-name {
+  font-size: 19px;
+  line-height: 24px;
+  font-weight: 600;
+  color: #F5F6F8;
+}
+
+.tw-grid-wrap-games .tw-cell-game .tw-meta-views {
+  font-size: 14px;
+  line-height: 24px;
+  font-weight: 400;
+  color: #A5AAB6;
+  margin-left: 8px;
+}
+
+
+/* Fitch — Task 04A: Cinematic navigation */
+
+#tw-browser .tw-topbar {
+  z-index: 8;
+}
+
+#tw-browser .tw-logo {
+  left: 44px;
+  top: 38px;
+  height: 36px;
+}
+
+#tw-browser .tw-tips {
+  left: 50%;
+  top: 36px;
+  white-space: nowrap;
+  -webkit-transform: translateX(-50%);
+  transform: translateX(-50%);
+}
+
+#tw-browser .tw-tip {
+  margin-left: 16px;
+}
+
+#tw-browser .tw-tip:first-child {
+  margin-left: 0;
+}
+
+#tw-browser .tw-tip-box {
+  height: 40px;
+  line-height: 38px;
+  padding: 0 16px;
+  border-radius: 9px;
+  background: transparent;
+}
+
+#tw-browser .tw-tip-icon {
+  display: none;
+}
+
+#tw-browser .tw-tip-label {
+  font-size: 17px;
+  font-weight: 600;
+  color: #DFE2E9;
+}
+
+#tw-browser .tw-tip-active .tw-tip-box {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: transparent;
+}
+
+#tw-browser .tw-account {
+  top: 36px;
+  right: 44px;
+  height: 40px;
+  line-height: 38px;
+  border-radius: 10px;
+  background: rgba(26, 29, 35, 0.80);
+}
+
+/* =========================================================
+   Fitch — Task 04B.1: Cinematic Hero
+   ========================================================= */
+
+#tw-browser .tw-home-hero {
+  position: relative;
+  height: 224px;
+  margin: 0 0 20px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #171B24;
+}
+
+#tw-browser .tw-home-hero-art {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background-position: center 38%;
+  background-size: cover;
+  background-repeat: no-repeat;
+  opacity: 0.85;
+}
+
+#tw-browser .tw-home-hero-shade {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: -webkit-linear-gradient(
+    left,
+    rgba(11, 13, 16, 0.97) 0%,
+    rgba(11, 13, 16, 0.80) 42%,
+    rgba(11, 13, 16, 0.14) 100%
+  );
+  background: linear-gradient(
+    to right,
+    rgba(11, 13, 16, 0.97) 0%,
+    rgba(11, 13, 16, 0.80) 42%,
+    rgba(11, 13, 16, 0.14) 100%
+  );
+}
+
+#tw-browser .tw-home-hero-copy {
+  position: absolute;
+  left: 28px;
+  right: 320px;
+  bottom: 25px;
+  text-align: left;
+}
+
+#tw-browser .tw-home-hero-live {
+  color: #F46B83;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+
+#tw-browser .tw-home-hero-name {
+  color: #FFFFFF;
+  font-size: 23px;
+  font-weight: 600;
+  line-height: 29px;
+}
+
+#tw-browser .tw-home-hero-title {
+  color: #F5F6F8;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 27px;
+  max-height: 54px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+#tw-browser .tw-home-hero-game {
+  color: #BCC1CC;
+  font-size: 15px;
+  line-height: 20px;
+  margin-top: 8px;
+}
+
+
+/* Fitch Task 04B.2 — hero backdrop extends behind the Following rail. */
+#tw-browser .tw-home-hero {
+  overflow: visible;
+  border-radius: 0;
+  background: transparent;
+}
+#tw-browser .tw-home-hero-art,
+#tw-browser .tw-home-hero-shade {
+  bottom: auto;
+  height: 555px;
+  border-radius: 0;
+  pointer-events: none;
+}
+#tw-browser .tw-home-hero-art {
+  z-index: 0;
+  background-position: center 35%;
+  opacity: 0.85;
+}
+#tw-browser .tw-home-hero-shade {
+  z-index: 1;
+  background:
+    -webkit-linear-gradient(top, rgba(11,13,16,0.14) 0%, rgba(11,13,16,0.20) 35%, rgba(11,13,16,0.65) 70%, #0B0D10 100%),
+    -webkit-linear-gradient(left, rgba(11,13,16,0.96) 0%, rgba(11,13,16,0.62) 43%, rgba(11,13,16,0.08) 100%);
+  background:
+    linear-gradient(to bottom, rgba(11,13,16,0.14) 0%, rgba(11,13,16,0.20) 35%, rgba(11,13,16,0.65) 70%, #0B0D10 100%),
+    linear-gradient(to right, rgba(11,13,16,0.96) 0%, rgba(11,13,16,0.62) 43%, rgba(11,13,16,0.08) 100%);
+}
+#tw-browser .tw-home-hero-copy {
+  z-index: 2;
+  left: 28px;
+  right: 24px;
+  top: 34px;
+  bottom: auto;
+  height: 160px;
+}
+#tw-browser .tw-home-hero-cover {
+  display: block;
+  float: left;
+  width: 100px;
+  height: 138px;
+  margin-right: 18px;
+  border-radius: 6px;
+  background: #1A1D23;
+  object-fit: cover;
+}
+#tw-browser .tw-home-hero-details {
+  display: block;
+  overflow: hidden;
+}
+#tw-browser .tw-home-section {
+  position: relative;
+  z-index: 3;
+}
+
+
+/* Fitch Task 04B.3 — full-bleed hero below the navigation, not inside the scroller. */
+#tw-browser .tw-home-backdrop {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 580px;
+  overflow: hidden;
+  z-index: 0;
+  pointer-events: none;
+  display: none;
+}
+#tw-browser .tw-home-backdrop .tw-home-hero-art,
+#tw-browser .tw-home-backdrop .tw-home-hero-shade {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: auto;
+  height: 580px;
+  border-radius: 0;
+  pointer-events: none;
+}
+#tw-browser .tw-home-backdrop .tw-home-hero-art {
+  background-size: cover;
+  background-position: center 34%;
+  background-repeat: no-repeat;
+  opacity: 0.88;
+}
+#tw-browser .tw-home-backdrop .tw-home-hero-shade {
+  background:
+    -webkit-linear-gradient(top,
+      rgba(11,13,16,0.20) 0%,
+      rgba(11,13,16,0.22) 22%,
+      rgba(11,13,16,0.48) 51%,
+      rgba(11,13,16,0.90) 75%,
+      #0B0D10 88%,
+      #0B0D10 100%),
+    -webkit-linear-gradient(left,
+      rgba(11,13,16,0.88) 0%,
+      rgba(11,13,16,0.50) 46%,
+      rgba(11,13,16,0.08) 100%);
+  background:
+    linear-gradient(to bottom,
+      rgba(11,13,16,0.20) 0%,
+      rgba(11,13,16,0.22) 22%,
+      rgba(11,13,16,0.48) 51%,
+      rgba(11,13,16,0.90) 75%,
+      #0B0D10 88%,
+      #0B0D10 100%),
+    linear-gradient(to right,
+      rgba(11,13,16,0.88) 0%,
+      rgba(11,13,16,0.50) 46%,
+      rgba(11,13,16,0.08) 100%);
+}
+/* Keep the nav visually above the hero and its content/cards above the image. */
+#tw-browser .tw-topbar { z-index: 8; }
+#tw-browser .tw-grid-wrap { z-index: 2; }

@@ -41,3 +41,15 @@ Logs/
 
 # Claude Code launch config
 .claude/
+
+# Fitch development patches
+/fitch-*-patch.js
+/fitch-*-patch.txt
+/patch-fitch-*.js
+
+# Fitch patch backups
+/.fitch-*-backup/
+
+# Local debug and test artifacts
+*.log
+coverage/

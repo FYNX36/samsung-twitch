@@ -596,7 +596,7 @@ test('homepage stream cards render local overlays and two-row metadata', () => {
   assert.match(cell.innerHTML, /class="tw-home-live-badge">LIVE<\/span>/);
   assert.match(cell.innerHTML, /class="tw-home-viewers">1\.2K<\/span>/);
   assert.match(cell.innerHTML, /class="tw-home-meta-name">Streamer Alpha<\/span>/);
-  assert.match(cell.innerHTML, /class="tw-home-meta-category">Category Alpha<\/span>/);
+  assert.match(cell.innerHTML, /class="tw-home-meta-category">Category Alpha<\/div>/);
   assert.match(cell.innerHTML, /class="tw-home-meta-title">A very long stream title<\/div>/);
   assert.doesNotMatch(cell.innerHTML, /class="tw-meta-views"/);
   assert.doesNotMatch(cell.innerHTML, /class="tw-meta-name"/);
@@ -1160,4 +1160,42 @@ test('OK on the active tab row refreshes the current grid', () => {
   assert.equal(scene.mode, MODE.ALL);
   assert.equal(apiCalls.topStreams, 2);
   assert.equal(scene.onTopNav, false);
+});
+
+
+// Fitch Task 04B.2 regression test
+test('hero tracks the selected Following stream without being replaced on Discover', () => {
+  const { scene, MODE, KEY } = setup({
+    live: [
+      stream('alpha', 'Alpha', { title: 'Alpha live', game: 'Counter-Strike', gameBox: 'https://example.com/a.jpg', thumb: 'https://example.com/a-320x180.jpg' }),
+      stream('beta', 'Beta', { title: 'Beta live', game: 'IRL', gameBox: 'https://example.com/b.jpg', thumb: 'https://example.com/b-320x180.jpg' }),
+    ],
+    streams: [stream('delta', 'Delta')],
+  });
+  scene.switchMode(MODE.ALL, true);
+  assert.match(scene.homeHeroCopy.innerHTML, /Alpha/);
+  assert.match(scene.homeHeroCopy.innerHTML, /tw-home-hero-cover/);
+  assert.match(scene.homeHeroArt.style.backgroundImage, /a-1280x720\.jpg/);
+  scene.handleKeyDown(KEY.RIGHT);
+  assert.match(scene.homeHeroCopy.innerHTML, /Beta/);
+  assert.match(scene.homeHeroArt.style.backgroundImage, /b-1280x720\.jpg/);
+  scene.handleKeyDown(KEY.DOWN);
+  assert.equal(scene.hr, 1);
+  assert.match(scene.homeHeroCopy.innerHTML, /Beta/, 'Discover focus keeps the last followed hero');
+});
+
+
+// Fitch Task 04B.3 regression test
+test('cinematic backdrop spans behind navigation and hides on other tabs', () => {
+  const { scene, els, MODE } = setup({
+    live: [stream('alpha', 'Alpha', { thumb: 'https://example.com/a-320x180.jpg' })],
+    streams: [stream('delta', 'Delta')],
+  });
+  assert.match(scene.root.innerHTML, /id="tw-home-backdrop"/);
+  scene.switchMode(MODE.ALL, true);
+  assert.equal(els['tw-home-backdrop'].style.display, 'block');
+  assert.equal(els['tw-home-backdrop'].children.length, 2);
+  assert.match(scene.homeHeroArt.style.backgroundImage, /a-1280x720/);
+  scene.switchMode(MODE.GAMES, true);
+  assert.equal(els['tw-home-backdrop'].style.display, 'none');
 });
