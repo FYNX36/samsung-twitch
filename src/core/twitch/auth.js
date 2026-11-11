@@ -23,6 +23,9 @@
   var REVOKE_URL = 'https://id.twitch.tv/oauth2/revoke';
   var GRANT = 'urn:ietf:params:oauth:grant-type:device_code';
 
+  var refreshActive = false;
+  var refreshCallbacks = [];
+
   function nowMs() { return (Date.now ? Date.now() : new Date().getTime()); }
 
   function form(params) {
@@ -217,14 +220,71 @@
   }
 
   // Exchange the refresh token for a fresh access token. cb(ok).
+  
   function refresh(cb) {
-    var rt = TW.storage.get('auth.refresh'); var id = clientId();
-    if (!rt || !id) { if (cb) { cb(false); } return; }
-    postForm(TOKEN_URL, { client_id: id, grant_type: 'refresh_token', refresh_token: rt }, function (status, json) {
-      if (status === 200 && json && json.access_token) { storeTokens(json); if (cb) { cb(true); } }
-      else { if (cb) { cb(false); } }
+    if (refreshActive) {
+      if (cb) { refreshCallbacks.push(cb); }
+      return;
+    }
+  
+    var rt = TW.storage.get('auth.refresh');
+    var id = clientId();
+    var originalAccess = token();
+  
+    if (!rt || !id) {
+      if (originalAccess) { clearTokens(); }
+      if (cb) { cb(false, 'reauth'); }
+      return;
+    }
+  
+    refreshActive = true;
+    refreshCallbacks = cb ? [cb] : [];
+  
+    postForm(TOKEN_URL, {
+      client_id: id,
+      grant_type: 'refresh_token',
+      refresh_token: rt
+    }, function (status, json) {
+      var ok = false;
+      var reason = status;
+    
+      // Prevent a late response from restoring a logged-out
+      // or replaced account.
+      var sameSession =
+        token() === originalAccess &&
+        TW.storage.get('auth.refresh') === rt;
+    
+      if (!sameSession) {
+        reason = 'session-changed';
+      } else if (status === 200 && json && json.access_token) {
+        storeTokens(json);
+        ok = true;
+        reason = null;
+      } else {
+        var message = String(
+          (json && (json.message || json.error)) || ''
+        );
+      
+        // Only definitive credential failures clear the login.
+        // A timeout, 429 or 5xx must not destroy the session.
+        if (status === 401 ||
+            (status === 400 &&
+             /invalid.*(refresh|grant|token)|expired|revok/i.test(message))) {
+          clearTokens();
+          reason = 'reauth';
+        }
+      }
+    
+      var callbacks = refreshCallbacks;
+      refreshCallbacks = [];
+      refreshActive = false;
+    
+      for (var i = 0; i < callbacks.length; i++) {
+        callbacks[i](ok, reason);
+      }
     });
   }
+
 
   function logout(cb) {
     var t = token(); var id = clientId();

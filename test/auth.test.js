@@ -234,3 +234,74 @@ test('GraphQL never attaches the OAuth token — browse stays anonymous even whe
   assert.equal(gqlHeaders(false).Authorization, undefined);
   assert.equal(gqlHeaders(true).Authorization, undefined);
 });
+
+
+test('parallel refresh callers share one request', () => {
+  const pending = [];
+
+  const net = {
+    send(opts, done) {
+      if (opts.url.indexOf('/token') >= 0) {
+        pending.push(done);
+      } else {
+        done(200, '{}');
+      }
+    }
+  };
+
+  const TW = loadAuth(net);
+  TW.config.api.userClientId = 'CID';
+  TW.storage.set('auth.access', 'OLD');
+  TW.storage.set('auth.refresh', 'R1');
+
+  const results = [];
+
+  TW.auth.refresh((ok) => results.push(ok));
+  TW.auth.refresh((ok) => results.push(ok));
+
+  assert.equal(pending.length, 1);
+  assert.equal(results.length, 0);
+
+  pending[0](200, JSON.stringify({
+    access_token: 'NEW',
+    refresh_token: 'R2',
+    expires_in: 3600
+  }));
+
+  assert.deepEqual(results, [true, true]);
+  assert.equal(TW.auth.token(), 'NEW');
+  assert.equal(TW.storage.get('auth.refresh'), 'R2');
+});
+
+test('late refresh response cannot restore a logged-out session', () => {
+  let finishRefresh;
+
+  const net = {
+    send(opts, done) {
+      if (opts.url.indexOf('/token') >= 0) {
+        finishRefresh = done;
+      } else {
+        done(200, '{}');
+      }
+    }
+  };
+
+  const TW = loadAuth(net);
+  TW.config.api.userClientId = 'CID';
+  TW.storage.set('auth.access', 'OLD');
+  TW.storage.set('auth.refresh', 'R1');
+
+  let result = null;
+  TW.auth.refresh((ok) => { result = ok; });
+
+  TW.auth.logout(() => {});
+
+  finishRefresh(200, JSON.stringify({
+    access_token: 'NEW',
+    refresh_token: 'R2'
+  }));
+
+  assert.equal(result, false);
+  assert.equal(TW.auth.isLoggedIn(), false);
+  assert.equal(TW.storage.get('auth.refresh'), null);
+});

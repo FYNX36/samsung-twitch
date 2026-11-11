@@ -22,31 +22,90 @@
     return { 'Authorization': 'Bearer ' + TW.auth.token(), 'Client-Id': TW.auth.clientId() };
   }
 
+  
   function get(path, onOk, onFail, retried) {
-    if (!TW.auth.isLoggedIn()) { if (onFail) { onFail(-1); } return; }
-    TW.net.send({ method: 'GET', url: BASE + path, headers: headers() }, function (status, text) {
+    if (!TW.auth.isLoggedIn()) {
+      if (onFail) { onFail(-1); }
+      return;
+    }
+  
+    var sentToken = TW.auth.token();
+    var sentUser = TW.auth.user();
+    var sentUserId = sentUser && sentUser.id;
+  
+    TW.net.send({
+      method: 'GET',
+      url: BASE + path,
+      headers: headers()
+    }, function (status, body) {
+    
       if (status === 401 && !retried && TW.auth.refresh) {
-        TW.auth.refresh(function (ok) {
-          if (ok) { get(path, onOk, onFail, true); }
-          else if (/scope/i.test(text || '')) {
-            if (TW.auth.clear) { TW.auth.clear(); }
+      
+        // Another request has already replaced the old token.
+        if (TW.auth.token() !== sentToken) {
+          var currentUser = TW.auth.user();
+        
+          if (!TW.auth.isLoggedIn() ||
+              (sentUserId &&
+               (!currentUser || currentUser.id !== sentUserId))) {
+            if (onFail) { onFail(-1); }
+            return;
+          }
+        
+          get(path, onOk, onFail, true);
+          return;
+        }
+      
+        TW.auth.refresh(function (ok, reason) {
+          if (ok) {
+            get(path, onOk, onFail, true);
+            return;
+          }
+        
+          if (/scope/i.test(body || '')) {
+            if (TW.auth.token() === sentToken && TW.auth.clear) {
+              TW.auth.clear();
+            }
             if (onFail) { onFail('scope'); }
-          } else if (onFail) { onFail(401); }
+          } else if (reason === 'reauth' ||
+                     !TW.auth.isLoggedIn()) {
+            if (onFail) { onFail(-1); }
+          } else if (onFail) {
+            onFail(401);
+          }
         });
+      
         return;
       }
-      if (status === 401 && /scope/i.test(text || '')) {
-        if (TW.auth.clear) { TW.auth.clear(); }
+    
+      if (status === 401 && /scope/i.test(body || '')) {
+        if (TW.auth.token() === sentToken && TW.auth.clear) {
+          TW.auth.clear();
+        }
         if (onFail) { onFail('scope'); }
         return;
       }
-      if (status < 200 || status >= 300) { if (onFail) { onFail(status); } return; }
+    
+      if (status < 200 || status >= 300) {
+        if (onFail) { onFail(status); }
+        return;
+      }
+    
       var json = null;
-      try { json = JSON.parse(text); } catch (e) {}
-      if (!json) { if (onFail) { onFail(-1); } return; }
+    
+      try {
+        json = JSON.parse(body);
+      } catch (e) {}
+    
+      if (!json) {
+        if (onFail) { onFail(-1); }
+        return;
+      }
+    
       onOk(json);
     });
   }
+
 
   function me(onOk, onFail) {
     get('/users', function (j) { onOk(j.data && j.data[0]); }, onFail);
