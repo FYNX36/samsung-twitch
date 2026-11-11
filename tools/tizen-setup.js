@@ -29,7 +29,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const { execFileSync } = require('child_process');
-const { resolve: resolveTizen, LOCAL_SDK_DIR, LOCAL_SDK_ROOT, ENV_JSON } = require('./lib/tizen-env');
+const { resolve: resolveTizen, execFileSyncCompat, LOCAL_SDK_DIR, LOCAL_SDK_ROOT, ENV_JSON } = require('./lib/tizen-env');
 
 const BASE = 'https://download.tizen.org/sdk/Installer/tizen-sdk_10.0/';
 // Exact installer byte sizes from the official mirror (used as an integrity check).
@@ -149,7 +149,7 @@ function download(url, dest) {
     { sdkRoot: env.sdkRoot, tizen: env.tizen, tz: env.tz, sdb: env.sdb, pkgMgr: env.pkgMgr }, null, 2) + '\n');
   console.log('wrote ' + path.relative(process.cwd(), ENV_JSON));
 
-  try { execFileSync(env.tizen, ['version'], { stdio: 'inherit' }); }
+  try { execFileSyncCompat(env.tizen, ['version'], { stdio: 'inherit' }); }
   catch (e) { console.log('  (warning: `tizen version` failed — check Rosetta / the install log)'); }
 
   console.log('\ntizen:setup: done. SDK is in dist/.tizen-sdk/  (rm -rf dist/.tizen-sdk to remove).');

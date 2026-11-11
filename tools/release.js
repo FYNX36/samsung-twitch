@@ -98,7 +98,7 @@ function writeGenericProfile(env) {
     '<profileitem ca="" distributor="2" key="" password="" rootca=""/>\n' +
     '</profile>\n' +
     '</profiles>\n');
-  execFileSync(env.tizen, ['cli-config', 'profiles.path=' + profileXml], { stdio: 'inherit' });
+  tizenEnv.execFileSyncCompat(env.tizen, ['cli-config', 'profiles.path=' + profileXml], { stdio: 'inherit' });
 }
 
 // Self-made author cert + a generic signing profile (default distributor cert).
@@ -108,7 +108,7 @@ function ensureGenericProfile(env) {
   const authorP12 = path.join(CERT_DIR, 'author.p12');
   if (!fs.existsSync(authorP12)) {
     console.log('  minting a throwaway generic author cert (one-time)…');
-    execFileSync(env.tizen, ['certificate', '-a', PROFILE, '-p', PW, '-f', 'author', '--', CERT_DIR], { stdio: 'inherit' });
+    tizenEnv.execFileSyncCompat(env.tizen, ['certificate', '-a', PROFILE, '-p', PW, '-f', 'author', '--', CERT_DIR], { stdio: 'inherit' });
   }
   writeGenericProfile(env);
 }
@@ -133,10 +133,10 @@ function buildWgt() {
   console.log('building + signing Twellie.wgt (generic cert; Apps2Samsung re-signs per-TV)…');
   ensureGenericProfile(env);
   const dir = build('tizen'); // dist/tizen
-  execFileSync(cli, ['build-web', '--', dir], { stdio: 'inherit' });
+  tizenEnv.execFileSyncCompat(cli, ['build-web', '--', dir], { stdio: 'inherit' });
   const built = path.join(dir, '.buildResult');
   fs.rmSync(path.join(built, 'Twellie.wgt'), { force: true });
-  execFileSync(cli, ['package', '-t', 'wgt', '-s', PROFILE, '--', built], { stdio: 'inherit' });
+  tizenEnv.execFileSyncCompat(cli, ['package', '-t', 'wgt', '-s', PROFILE, '--', built], { stdio: 'inherit' });
   const wgt = fs.readdirSync(built).find((f) => f.endsWith('.wgt'));
   if (!wgt) throw new Error('tizen package produced no .wgt in ' + built);
   fs.copyFileSync(path.join(built, wgt), outWgt);

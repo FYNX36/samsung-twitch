@@ -31,6 +31,7 @@ function setup(opts) {
   const calls = { goToChannel: [], goToChannelPage: [], goToLogin: 0 };
   const apiCalls = { followedStreams: 0, followedGames: 0, followedChannels: 0, topStreams: 0, topGames: 0, streamsByGame: 0 };
   const delayed = [];
+  const pendingHome = { followedStreams: [], topStreams: [] };
 
   const dom = {
     create: (t, c, h) => { const e = mk(); if (c) { e.className = c; } if (h != null) { e.innerHTML = h; } return e; },
@@ -58,6 +59,7 @@ function setup(opts) {
     api: {
       followedStreams: (cursor, ok, fail) => {
         apiCalls.followedStreams++;
+        if (opts.deferHomeData) { pendingHome.followedStreams.push({ ok, fail }); return; }
         if (opts.followedStreamsFail) { fail(opts.followedStreamsStatus || 0); return; }
         ok({ items: (opts.live || []).slice(), cursor: null });
       },
@@ -71,7 +73,12 @@ function setup(opts) {
         if (opts.followedChannelsFail) { fail(opts.followedChannelsStatus || 0); return; }
         ok({ items: (opts.follows || []).slice(), cursor: null });
       },
-      topStreams: (cursor, ok) => { apiCalls.topStreams++; ok({ items: (opts.streams || []).slice(), cursor: null }); },
+      topStreams: (cursor, ok, fail) => {
+        apiCalls.topStreams++;
+        if (opts.deferHomeData) { pendingHome.topStreams.push({ ok, fail }); return; }
+        if (opts.topStreamsFail) { fail(opts.topStreamsStatus || 0); return; }
+        ok({ items: (opts.streams || []).slice(), cursor: null });
+      },
       topGames: (cursor, ok) => { apiCalls.topGames++; ok({ items: (opts.games || []).slice(), cursor: null }); },
       streamsByGame: (game, cursor, ok) => { apiCalls.streamsByGame++; ok({ items: (opts.gameStreams || []).slice(), cursor: null }); },
       categoryInfo: (game, ok) => ok(opts.categoryInfo || game),
@@ -92,7 +99,7 @@ function setup(opts) {
   vm.runInContext(code, g, { filename: 'browser-scene.js' });
   const scene = new TW.BrowserScene(opts.adapter || {});
   scene.initialize();
-  return { scene, calls, els, apiCalls, delayed, MODE: TW.BrowserScene.MODE, KEY: TW.KEY };
+  return { scene, calls, els, apiCalls, delayed, pendingHome, MODE: TW.BrowserScene.MODE, KEY: TW.KEY };
 }
 
 const stream = (login, display, extra) => Object.assign(
@@ -101,6 +108,23 @@ const stream = (login, display, extra) => Object.assign(
 );
 const channel = (login, display) => ({ kind: 'channel', login, display: display || login, avatar: '' });
 const game = (display) => ({ kind: 'game', name: display, display, viewers: 1, box: '' });
+
+// Development-only authenticated homepage fixture. The real auth and API
+// implementations are untouched; setup() supplies deterministic responses.
+const authenticatedHomepageFixture = () => setup({
+  loggedIn: true,
+  live: [
+    stream('followed-alpha', 'Followed Alpha', { title: 'Alpha live', viewers: 120 }),
+    stream('followed-beta', 'Followed Beta', { title: 'Beta live', viewers: 80 }),
+    stream('followed-gamma', 'Followed Gamma', { title: 'Gamma live', viewers: 40 }),
+  ],
+  streams: [
+    stream('followed-alpha', 'Followed Alpha', { title: 'Alpha live', viewers: 120 }),
+    stream('discover-delta', 'Discover Delta', { title: 'Delta live', viewers: 60 }),
+    stream('discover-epsilon', 'Discover Epsilon', { title: 'Epsilon live', viewers: 30 }),
+    stream('discover-zeta', 'Discover Zeta', { title: 'Zeta live', viewers: 20 }),
+  ],
+});
 
 test('zero follows shows the empty state and builds no rows', () => {
   const { scene, els, MODE } = setup({ live: [], follows: [] });
@@ -303,22 +327,222 @@ test('Following uses a followed-channel-specific empty error instead of the gene
   assert.notEqual(els['tw-b-loading'].style.display, 'block');
 });
 
-test('a lone tile is padded to full columns so it keeps standard size', () => {
+test('a lone live tile remains a single focused rail card', () => {
   const { scene, MODE } = setup({ live: [stream('solo')], follows: [] });
   scene.switchMode(MODE.FOLLOWED, true);
   assert.equal(scene.fRows.length, 1);
   assert.equal(scene.fRows[0].cells.length, 1, 'one focusable cell');
-  // The rendered row carries 4 <td>s (1 real + 3 pads) -> table-layout:fixed
-  // keeps 25% columns instead of stretching the single tile.
-  assert.equal(scene.fRows[0].el.children.length, 4);
+  assert.equal(scene.fRows[0].el.children.length, 1);
 });
 
-test('a lone top-level channel tile is padded to full columns', () => {
+test('a lone homepage Discover tile remains focused without a flat grid', () => {
   const { scene, els, MODE } = setup({ streams: [stream('solo')] });
   scene.switchMode(MODE.ALL, true);
-  assert.equal(els['tw-grid'].style.display, 'table');
-  assert.equal(scene.cells.length, 1, 'one focusable channel tile');
-  assert.equal(scene.rowEls[0].childNodes.length, 4, '1 real tile + 3 pads');
+  assert.equal(els['tw-home'].style.display, 'block');
+  assert.equal(scene.homeRows.length, 1);
+  assert.equal(scene.homeRows[0].cells.length, 1, 'one focusable Discover tile');
+});
+
+test('Channels homepage shows followed live first and deduplicates Discover streams', () => {
+  const { scene, MODE, apiCalls } = setup({
+    live: [stream('followed', 'Followed')],
+    streams: [stream('followed', 'Followed'), stream('discover', 'Discover')],
+  });
+  scene.switchMode(MODE.ALL, true);
+  assert.equal(apiCalls.followedStreams, 1);
+  assert.equal(apiCalls.topStreams, 1);
+  assert.equal(scene.homeRows.length, 2);
+  assert.equal(scene.homeRows[0].id, 'following');
+  assert.equal(scene.homeRows[0].items[0].login, 'followed');
+  assert.equal(scene.homeRows[1].id, 'discover');
+  assert.equal(scene.homeRows[1].items.map((item) => item.login).join(','), 'discover');
+});
+
+test('logged-out Channels homepage omits Following and keeps Discover', () => {
+  const { scene, MODE, apiCalls } = setup({
+    loggedIn: false,
+    live: [stream('followed')],
+    streams: [stream('discover')],
+  });
+  scene.switchMode(MODE.ALL, true);
+  assert.equal(apiCalls.followedStreams, 0);
+  assert.equal(scene.homeRows.length, 1);
+  assert.equal(scene.homeRows[0].id, 'discover');
+});
+
+test('homepage handles empty followed results and Discover loading errors', () => {
+  const emptyFollowed = setup({ live: [], streams: [stream('discover')] });
+  emptyFollowed.scene.switchMode(emptyFollowed.MODE.ALL, true);
+  assert.equal(emptyFollowed.scene.homeRows.length, 1);
+  assert.equal(emptyFollowed.scene.homeRows[0].id, 'discover');
+
+  const failedDiscover = setup({ live: [stream('followed')], topStreamsFail: true });
+  failedDiscover.scene.switchMode(failedDiscover.MODE.ALL, true);
+  assert.equal(failedDiscover.scene.homeRows.length, 1);
+  assert.equal(failedDiscover.scene.homeRows[0].id, 'following');
+
+  const failedAll = setup({ live: [], topStreamsFail: true, followedStreamsFail: true });
+  failedAll.scene.switchMode(failedAll.MODE.ALL, true);
+  assert.equal(failedAll.scene.homeRows.length, 0);
+  assert.notEqual(failedAll.els['tw-b-loading'].style.display, 'none');
+});
+
+test('homepage rails navigate horizontally and vertically and restore playback focus', () => {
+  const { scene, calls, MODE, KEY } = authenticatedHomepageFixture();
+  scene.switchMode(MODE.ALL, true);
+  assert.equal(scene.homeRows.length, 2);
+  assert.equal(scene.homeRows[0].id, 'following');
+  assert.equal(scene.homeRows[1].id, 'discover');
+  assert.equal(scene.homeRows[0].items.length, 3);
+  assert.equal(scene.homeRows[1].items.length, 3);
+  var following = scene.homeRows[0];
+  following.railViewport.offsetWidth = 600;
+  following.railViewport.clientWidth = 600;
+  for (var i = 0; i < following.cells.length; i++) {
+    following.cells[i].offsetLeft = i * 300;
+    following.cells[i].offsetWidth = 300;
+  }
+  scene.handleKeyDown(KEY.RIGHT);
+  assert.equal(scene.hc, 1);
+  scene.handleKeyDown(KEY.DOWN);
+  assert.equal(scene.hr, 1);
+  scene.handleKeyDown(KEY.DOWN);
+  assert.equal(scene.hr, 1, 'DOWN at the last visible rail stays on that rail');
+  scene.handleKeyDown(KEY.UP);
+  assert.equal(scene.hr, 0);
+  assert.equal(scene.hc, 0);
+  scene.handleKeyDown(KEY.ENTER);
+  assert.deepEqual(calls.goToChannel, ['followed-alpha']);
+  scene.handleHide();
+  scene.handleShow();
+  scene.handleFocus();
+  assert.equal(scene.hr, 0);
+  assert.equal(scene.hc, 0);
+  assert.match(scene.homeCell().firstChild.className, /tw-focused/);
+});
+
+test('authenticated homepage uses local focus across both visible rails', () => {
+  const { scene, els, MODE, KEY } = authenticatedHomepageFixture();
+  scene.switchMode(MODE.ALL, true);
+  scene.homeRows[0].railViewport.clientWidth = 1200;
+  scene.homeRows[0].railViewport.offsetWidth = 1200;
+  scene.homeRows[1].railViewport.clientWidth = 1200;
+  scene.homeRows[1].railViewport.offsetWidth = 1200;
+  assert.match(scene.homeCell().firstChild.className, /tw-focused/);
+  assert.equal(els['tw-grid-frame'].style.opacity, '0');
+  scene.handleKeyDown(KEY.DOWN);
+  assert.equal(scene.hr, 1);
+  assert.doesNotMatch(scene.homeRows[0].cells[0].firstChild.className, /tw-focused/);
+  assert.match(scene.homeCell().firstChild.className, /tw-focused/);
+  assert.equal(els['tw-grid-frame'].style.opacity, '0');
+  scene.handleKeyDown(KEY.RIGHT);
+  assert.doesNotMatch(scene.homeRows[1].cells[0].firstChild.className, /tw-focused/);
+  assert.match(scene.homeCell().firstChild.className, /tw-focused/);
+});
+
+test('homepage vertical navigation uses spatial columns instead of remembered columns', () => {
+  const { scene, MODE, KEY } = authenticatedHomepageFixture();
+  scene.switchMode(MODE.ALL, true);
+  scene.homeRows[0].railViewport.clientWidth = 1200;
+  scene.homeRows[0].railViewport.offsetWidth = 1200;
+  scene.homeRows[1].railViewport.clientWidth = 1200;
+  scene.homeRows[1].railViewport.offsetWidth = 1200;
+  for (var r = 0; r < scene.homeRows.length; r++) {
+    for (var c = 0; c < scene.homeRows[r].cells.length; c++) {
+      scene.homeRows[r].cells[c].offsetLeft = c * 300;
+      scene.homeRows[r].cells[c].offsetWidth = 300;
+    }
+  }
+  scene.handleKeyDown(KEY.DOWN);
+  scene.handleKeyDown(KEY.RIGHT);
+  scene.handleKeyDown(KEY.RIGHT);
+  assert.equal(scene.hc, 2);
+  scene.handleKeyDown(KEY.UP);
+  assert.equal(scene.hr, 0);
+  assert.equal(scene.hc, 2);
+  scene.handleKeyDown(KEY.LEFT);
+  scene.handleKeyDown(KEY.LEFT);
+  assert.equal(scene.hc, 0);
+  scene.handleKeyDown(KEY.DOWN);
+  assert.equal(scene.hr, 1);
+  assert.equal(scene.hc, 0, 'Following #1 returns to Discover #1');
+});
+
+test('homepage vertical navigation chooses aligned cards across different rail lengths and scrolls', () => {
+  const { scene, MODE, KEY } = setup({
+    live: [stream('f1'), stream('f2')],
+    streams: [stream('d1'), stream('d2'), stream('d3')],
+  });
+  scene.switchMode(MODE.ALL, true);
+  var following = scene.homeRows[0];
+  var discover = scene.homeRows[1];
+  following.railViewport.clientWidth = 1200;
+  following.railViewport.offsetWidth = 1200;
+  discover.railViewport.clientWidth = 1200;
+  discover.railViewport.offsetWidth = 1200;
+  for (var i = 0; i < following.cells.length; i++) {
+    following.cells[i].offsetLeft = i * 300;
+    following.cells[i].offsetWidth = 300;
+  }
+  for (var j = 0; j < discover.cells.length; j++) {
+    discover.cells[j].offsetLeft = j * 300;
+    discover.cells[j].offsetWidth = 300;
+  }
+  scene.handleKeyDown(KEY.RIGHT);
+  scene.handleKeyDown(KEY.DOWN);
+  assert.equal(scene.hc, 1, 'Following #2 selects Discover #2');
+  following.railScroll = 300;
+  scene.hr = 0;
+  scene.hc = 1;
+  scene.homeMove(1, 0);
+  assert.equal(scene.hc, 0, 'horizontal rail scroll is included in spatial alignment');
+});
+
+test('homepage local focus does not depend on scaled global-frame geometry', () => {
+  const { scene, els, MODE } = setup({ streams: [stream('solo')] });
+  scene.switchMode(MODE.ALL, true);
+  const css = fs.readFileSync(path.resolve(__dirname, '..', 'src/ui/styles.css'), 'utf8');
+  assert.match(css, /\.tw-home \.tw-cell-inner\.tw-focused \.tw-thumb\s*\{[^}]*border-color: #A78BFA;/s);
+  assert.match(scene.homeCell().firstChild.className, /tw-focused/);
+  assert.equal(els['tw-grid-frame'].style.opacity, '0');
+});
+
+test('stale homepage responses cannot restore focus after leaving Channels', () => {
+  const { scene, pendingHome, MODE, els } = setup({ deferHomeData: true });
+  scene.switchMode(MODE.ALL, true);
+  assert.equal(scene.loading, true);
+  scene.switchMode(MODE.GAMES, true);
+  pendingHome.followedStreams[0].ok({ items: [stream('late-followed')], cursor: null });
+  pendingHome.topStreams[0].ok({ items: [stream('late-discover')], cursor: null });
+  assert.equal(scene.mode, MODE.GAMES);
+  assert.equal(scene.homeRows.length, 0);
+  assert.equal(els['tw-grid-frame'].style.opacity, '0');
+});
+
+test('homepage local focus remains aligned through vertical rail scrolling', () => {
+  const { scene, els, MODE, KEY } = authenticatedHomepageFixture();
+  scene.switchMode(MODE.ALL, true);
+  scene.handleKeyDown(KEY.DOWN);
+  assert.equal(scene.hr, 1);
+  assert.match(scene.homeCell().firstChild.className, /tw-focused/);
+  assert.equal(els['tw-grid-frame'].style.opacity, '0');
+  assert.equal(scene.homeRows[1].railTrack.style.transform, 'translate3d(0px,0,0)');
+});
+
+test('homepage vertical scroll stays within content bounds across rail changes', () => {
+  const { scene, els, MODE, KEY } = authenticatedHomepageFixture();
+  scene.switchMode(MODE.ALL, true);
+  els['tw-home'].offsetHeight = 1000;
+  els['tw-grid-wrap'].clientHeight = 600;
+  scene.homeRows[1].el.offsetTop = 850;
+  scene.handleKeyDown(KEY.DOWN);
+  assert.equal(scene.homeScroll, 400, 'scroll is clamped to content height minus viewport height');
+  assert.equal(els['tw-grid-scroll'].style.transform, 'translate3d(0,-400px,0)');
+  assert.ok(scene.homeScroll >= 0 && scene.homeScroll <= scene.homeScrollMax());
+  scene.handleKeyDown(KEY.UP);
+  assert.equal(scene.homeScroll, 0);
+  scene.handleKeyDown(KEY.DOWN);
+  assert.equal(scene.homeScroll, 400, 'repeated DOWN does not accumulate displacement');
 });
 
 test('adapter can defer the initial browse network request until after first paint', () => {
@@ -356,8 +580,49 @@ test('browse grid thumbnails carry dimensions and placeholder fallback', () => {
   const streamCell = scene.createCell({ kind: 'stream', display: 'A', title: 'T', viewers: 1, thumb: 'http://img/a.jpg' });
   assert.match(streamCell.innerHTML, /class="tw-thumb" width="320" height="180" src="http:\/\/img\/a\.jpg"/);
   assert.match(streamCell.innerHTML, /onerror="this\.removeAttribute\('src'\)"/);
+  assert.match(streamCell.innerHTML, /class="tw-live-badge">LIVE<\/span>T<\/div>/);
   const gameCell = scene.createCell({ kind: 'game', display: 'G', viewers: 2, box: 'http://img/g.jpg' });
   assert.match(gameCell.innerHTML, /class="tw-thumb" width="285" height="380" src="http:\/\/img\/g\.jpg"/);
+  assert.doesNotMatch(gameCell.innerHTML, /tw-live-badge/);
+});
+
+test('homepage stream cards render local overlays and two-row metadata', () => {
+  const { scene } = setup();
+  const cell = scene.createCell({
+    kind: 'stream', login: 'alpha', display: 'Streamer Alpha', title: 'A very long stream title',
+    viewers: 1200, game: 'Category Alpha', thumb: 'http://img/a.jpg',
+  }, true);
+  assert.match(cell.innerHTML, /class="tw-home-thumb-wrap"/);
+  assert.match(cell.innerHTML, /class="tw-home-live-badge">LIVE<\/span>/);
+  assert.match(cell.innerHTML, /class="tw-home-viewers">1\.2K<\/span>/);
+  assert.match(cell.innerHTML, /class="tw-home-meta-name">Streamer Alpha<\/span>/);
+  assert.match(cell.innerHTML, /class="tw-home-meta-category">Category Alpha<\/span>/);
+  assert.match(cell.innerHTML, /class="tw-home-meta-title">A very long stream title<\/div>/);
+  assert.doesNotMatch(cell.innerHTML, /class="tw-meta-views"/);
+  assert.doesNotMatch(cell.innerHTML, /class="tw-meta-name"/);
+});
+
+test('homepage viewer pills format counts and omit unavailable values', () => {
+  const { scene } = setup();
+  [
+    [980, '980'], [1200, '1.2K'], [12400, '12.4K'], [1200000, '1.2M'],
+  ].forEach(([viewers, formatted]) => {
+    const cell = scene.createCell({ kind: 'stream', display: 'A', title: 'T', viewers, thumb: '' }, true);
+    assert.match(cell.innerHTML, new RegExp('class="tw-home-viewers">' + formatted + '<\\/span>'));
+  });
+  const missing = scene.createCell({ kind: 'stream', display: 'A', title: 'T', viewers: null, thumb: '' }, true);
+  assert.doesNotMatch(missing.innerHTML, /tw-home-viewers/);
+});
+
+test('homepage metadata handles missing category and keeps default cards isolated', () => {
+  const { scene } = setup();
+  const homepage = scene.createCell({ kind: 'stream', display: 'A', title: 'T', viewers: 1, thumb: '' }, true);
+  assert.doesNotMatch(homepage.innerHTML, /tw-home-meta-category/);
+  assert.match(homepage.innerHTML, /tw-home-meta-title/);
+  const regular = scene.createCell({ kind: 'stream', display: 'A', title: 'T', viewers: 1, thumb: '' });
+  assert.doesNotMatch(regular.innerHTML, /tw-home-thumb-wrap|tw-home-live-badge|tw-home-viewers/);
+  const gameCell = scene.createCell(game('Chess'), true);
+  assert.doesNotMatch(gameCell.innerHTML, /tw-home-thumb-wrap|tw-home-live-badge|tw-home-viewers/);
 });
 
 test('offline channel avatars keep their placeholder on load failure', () => {
@@ -371,54 +636,6 @@ test('offline channel avatar frame keeps a thumbnail-style gap', () => {
   const css = fs.readFileSync(path.resolve(__dirname, '..', 'src/ui/styles.css'), 'utf8');
   assert.match(css, /\.tw-chan-avatar\s*\{[^}]*border: 3px solid transparent;[^}]*box-sizing: border-box;[^}]*background-clip: padding-box;/s);
   assert.match(css, /\.tw-grid-frame-round\s*\{[^}]*border-radius: 50%;[^}]*box-shadow: 0 0 0 4px #f4f4f7;/s);
-});
-
-test('flat grid selection frame surrounds the thumbnail, not the caption', () => {
-  const { scene, els, MODE } = setup({ streams: [stream('solo')] });
-  scene.switchMode(MODE.ALL, true);
-  const inner = scene.focusedCell().firstChild;
-  inner.offsetLeft = 5;
-  inner.offsetTop = 9;
-  inner.offsetWidth = 100;
-  inner.offsetHeight = 84; // thumbnail + caption
-  inner.getBoundingClientRect = () => ({ left: 20, top: 30, right: 120, bottom: 114 });
-  inner.getElementsByTagName = () => [{
-    offsetLeft: 0,
-    offsetTop: 0,
-    offsetWidth: 100,
-    offsetHeight: 60,
-    complete: true,
-    getBoundingClientRect: () => ({ left: 20, top: 30, right: 120.5, bottom: 90.25 }),
-  }];
-  scene.updateFrame();
-  assert.equal(els['tw-grid-frame'].style.left, '5px');
-  assert.equal(els['tw-grid-frame'].style.top, '9px');
-  assert.equal(els['tw-grid-frame'].style.width, '100.5px');
-  assert.equal(els['tw-grid-frame'].style.height, '60.25px');
-});
-
-test('flat grid selection frame converts scaled rects back to stage coordinates', () => {
-  const { scene, els, MODE } = setup({ streams: [stream('solo')] });
-  scene.switchMode(MODE.ALL, true);
-  const inner = scene.focusedCell().firstChild;
-  inner.offsetLeft = 5;
-  inner.offsetTop = 9;
-  inner.offsetWidth = 100;
-  inner.offsetHeight = 84;
-  inner.getBoundingClientRect = () => ({ left: 10, top: 20, right: 60, bottom: 62 });
-  inner.getElementsByTagName = () => [{
-    offsetLeft: 0,
-    offsetTop: 0,
-    offsetWidth: 100,
-    offsetHeight: 60,
-    complete: true,
-    getBoundingClientRect: () => ({ left: 10, top: 20, right: 60.25, bottom: 50.125 }),
-  }];
-  scene.updateFrame();
-  assert.equal(els['tw-grid-frame'].style.left, '5px');
-  assert.equal(els['tw-grid-frame'].style.top, '9px');
-  assert.equal(els['tw-grid-frame'].style.width, '100.5px');
-  assert.equal(els['tw-grid-frame'].style.height, '60.25px');
 });
 
 test('Following live selection frame preserves fractional thumbnail bounds', () => {
@@ -505,7 +722,7 @@ test('Following section frame converts scaled section top back to stage coordina
 test('Following live selection frame subtracts the row-local table offset', () => {
   const { scene, els, MODE } = setup({
     live: [stream('a'), stream('b'), stream('c'), stream('d'), stream('e')],
-    follows: [],
+    follows: [channel('offguy')],
   });
   scene.switchMode(MODE.FOLLOWED, true);
   scene.fr = 1;
@@ -642,6 +859,99 @@ test('the offline section lays out at 6 columns', () => {
   assert.equal(scene.fRows[0].el.childNodes.length, 6);
   assert.equal(scene.fRows[1].cells.length, 1);
   assert.equal(scene.fRows[1].el.childNodes.length, 6); // 1 real + 5 pads
+});
+
+test('Following live channels use one horizontally navigable rail row', () => {
+  const { scene, MODE } = setup({
+    live: [stream('a'), stream('b'), stream('c'), stream('d'), stream('e')],
+    follows: [],
+  });
+  scene.switchMode(MODE.FOLLOWED, true);
+  assert.equal(scene.fRows.length, 1);
+  assert.equal(scene.fRows[0].cells.length, 5);
+  assert.match(scene.fRows[0].el.parentNode.parentNode.className, /tw-rail-track/);
+});
+
+test('Following live rail moves left and right and scrolls the focused card into view', () => {
+  const { scene, MODE, KEY } = setup({
+    live: [stream('a'), stream('b'), stream('c'), stream('d'), stream('e')],
+    follows: [],
+  });
+  scene.switchMode(MODE.FOLLOWED, true);
+  var row = scene.fRows[0];
+  row.railViewport.offsetWidth = 600;
+  row.railViewport.clientWidth = 600;
+  row.railTrack.offsetWidth = 1500;
+  for (var i = 0; i < row.cells.length; i++) {
+    row.cells[i].offsetLeft = i * 300;
+    row.cells[i].offsetWidth = 300;
+  }
+  scene.followAddFocus();
+  scene.handleFollowKey(KEY.RIGHT);
+  assert.equal(scene.fc, 1);
+  scene.handleFollowKey(KEY.RIGHT);
+  assert.equal(scene.fc, 2);
+  assert.equal(row.railScroll, 300);
+  assert.equal(row.railTrack.style.transform, 'translate3d(-300px,0,0)');
+  scene.handleFollowKey(KEY.LEFT);
+  assert.equal(scene.fc, 1);
+  assert.equal(row.railScroll, 300);
+});
+
+test('Following remembers the live rail card across vertical sections', () => {
+  const { scene, MODE, KEY } = setup({
+    live: [stream('a'), stream('b'), stream('c')],
+    follows: [channel('offguy')],
+  });
+  scene.switchMode(MODE.FOLLOWED, true);
+  scene.handleFollowKey(KEY.RIGHT);
+  scene.handleFollowKey(KEY.RIGHT);
+  scene.handleFollowKey(KEY.DOWN);
+  assert.equal(scene.fr, 1);
+  scene.handleFollowKey(KEY.UP);
+  assert.equal(scene.fr, 0);
+  assert.equal(scene.fc, 2);
+});
+
+test('Following top navigation returns focus to the live rail', () => {
+  const { scene, MODE, KEY } = setup({ live: [stream('a'), stream('b')], follows: [] });
+  scene.switchMode(MODE.FOLLOWED, true);
+  scene.focusTopNav();
+  scene.navIndex = 2;
+  scene.handleTopNavKey(KEY.DOWN);
+  assert.equal(scene.onTopNav, false);
+  assert.equal(scene.fr, 0);
+  assert.equal(scene.fc, 1);
+  assert.match(scene.followCell().firstChild.className, /tw-focused/);
+});
+
+test('Following single-item and empty live rails remain safe', () => {
+  const single = setup({ live: [stream('solo')], follows: [] });
+  single.scene.switchMode(single.MODE.FOLLOWED, true);
+  assert.equal(single.scene.fRows.length, 1);
+  assert.equal(single.scene.fRows[0].cells.length, 1);
+  assert.equal(single.scene.fRows[0].railScroll, 0);
+
+  const empty = setup({ live: [], follows: [] });
+  empty.scene.switchMode(empty.MODE.FOLLOWED, true);
+  assert.equal(empty.scene.fRows.length, 0);
+  assert.notEqual(empty.els['tw-follow-empty'].style.display, 'none');
+});
+
+test('returning from playback restores the focused Following rail card', () => {
+  const { scene, MODE, KEY } = setup({
+    live: [stream('a'), stream('b'), stream('c')],
+    follows: [],
+  });
+  scene.switchMode(MODE.FOLLOWED, true);
+  scene.handleFollowKey(KEY.RIGHT);
+  scene.handleHide();
+  scene.handleShow();
+  scene.handleFocus();
+  assert.equal(scene.mode, MODE.FOLLOWED);
+  assert.equal(scene.fr, 0);
+  assert.equal(scene.fc, 1);
+  assert.match(scene.followCell().firstChild.className, /tw-focused/);
 });
 
 test('Following pins later rows at the top so prior row names stay hidden', () => {

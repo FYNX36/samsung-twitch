@@ -16,6 +16,7 @@
   TW.twitch = TW.twitch || {};
 
   var BASE = 'https://api.twitch.tv/helix';
+  var profileCache = {};
 
   function headers() {
     return { 'Authorization': 'Bearer ' + TW.auth.token(), 'Client-Id': TW.auth.clientId() };
@@ -65,6 +66,7 @@
       var s = data[i];
       items.push({
         kind: 'stream',
+        userId: s.user_id || '',
         login: s.user_login,
         display: s.user_name || s.user_login,
         title: s.title || '',
@@ -76,6 +78,40 @@
       });
     }
     return { items: items, cursor: (j.pagination && j.pagination.cursor) || null };
+  }
+
+  function profileImages(ids, onOk) {
+    var unique = [], missing = [], result = {};
+    for (var i = 0; i < ids.length; i++) {
+      var id = String(ids[i] || '');
+      if (!id || result[id]) { continue; }
+      result[id] = true;
+      if (profileCache[id]) { result[id] = profileCache[id]; }
+      else { unique.push(id); }
+    }
+    if (!unique.length) { onOk(result); return; }
+    var qs = '';
+    for (var j = 0; j < unique.length; j++) { qs += (j ? '&' : '?') + 'id=' + encodeURIComponent(unique[j]); }
+    get('/users' + qs, function (j) {
+      var data = (j && j.data) || [];
+      for (var k = 0; k < data.length; k++) {
+        profileCache[data[k].id] = { login: data[k].login || '', avatar: data[k].profile_image_url || '' };
+      }
+      for (var n = 0; n < unique.length; n++) {
+        if (!profileCache[unique[n]]) { profileCache[unique[n]] = { login: '', avatar: '' }; }
+        result[unique[n]] = profileCache[unique[n]];
+      }
+      onOk(result);
+    }, function () {
+      for (var m = 0; m < unique.length; m++) {
+        result[unique[m]] = {
+          login: '',
+          avatar: ''
+        };
+      }
+
+      onOk(result);
+    });
   }
 
   // The channels the logged-in user follows that are live now.
@@ -152,6 +188,7 @@
   }
 
   TW.twitch.helix = {
-    me: me, followedStreams: followedStreams, followedChannels: followedChannels, mapStreams: mapStreams
+    me: me, followedStreams: followedStreams, followedChannels: followedChannels,
+    profileImages: profileImages, mapStreams: mapStreams
   };
 })(this);

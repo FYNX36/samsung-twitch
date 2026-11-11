@@ -13,7 +13,7 @@ html, body {
   width: 1280px;
   height: 720px;
   overflow: hidden;
-  background: #08080a;
+  background: #0B0D10;
   color: #efeff1;
   font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-weight: 300;
@@ -24,11 +24,11 @@ html, body {
 .tw-scene { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
 /* The grid sits on an opaque background; the player scene is transparent so
    the video behind #app shows through. */
-#tw-browser { background: #08080a; }
+#tw-browser { background: #0B0D10; }
 #tw-channel { background: transparent; }
 
 /* --- top bar ------------------------------------------------------------ */
-.tw-topbar { position: absolute; left: 0; top: 0; width: 100%; height: 84px; }
+.tw-topbar { position: absolute; left: 0; top: 0; width: 100%; height: 96px; }
 /* The top row's edge margin is 43px, not 40: the grid's thumbnails carry a 3px
    transparent border (the "invisible frame"), so their visible artwork starts
    at 40+3=43. Matching that keeps the logo/tabs/chip flush with the artwork. */
@@ -36,29 +36,34 @@ html, body {
 /* Tabs sit just after the logo, shifted with the rest of the top row onto the
    43px margin; spacing is natural per label, like a tab strip rather than
    fixed-width buttons. */
-.tw-tips { position: absolute; left: 87px; top: 44.5px; }
+.tw-tips { position: absolute; left: 87px; top: 39px; }
 .tw-tip {
-  display: inline-block; margin-left: 24px; vertical-align: middle; color: #a9a9b2;
+  display: inline-block; margin-left: 9px; vertical-align: middle; color: #A5AAB6;
   text-align: left; white-space: nowrap;
 }
-.tw-tip:first-child { margin-left: 8px; }
+.tw-tip:first-child { margin-left: 0; }
 .tw-tip-box {
-  display: inline-block; padding: 0 0 6px; font-size: 0; line-height: 0;
-  border-bottom: 3px solid transparent;
+  display: inline-block; height: 34px; padding: 0 12px; box-sizing: border-box;
+  font-size: 0; line-height: 32px; border: 1px solid transparent;
+  border-radius: 17px; background: #1A1D23;
+  -webkit-transition: background 0.12s ease-out, color 0.12s ease-out;
+  transition: background 0.12s ease-out, color 0.12s ease-out;
 }
 .tw-tip-label {
-  display: inline-block; position: relative; top: 1px;
-  height: 20px; line-height: 20px; vertical-align: middle;
-  font-size: 20px; font-weight: 300;
+  display: inline-block; height: 18px; line-height: 18px; vertical-align: middle;
+  font-size: 17px; font-weight: 500;
 }
-.tw-tip-active { color: #fff; }
-.tw-tip-active .tw-tip-box { border-bottom-color: rgba(244, 244, 247, 0.55); }
-.tw-tabs-focused .tw-tip-active .tw-tip-box { border-bottom-color: transparent; }
-/* D-pad cursor for the tab row: a sliding underline separate from the active
-   tab marker, so tabs don't read as push buttons. */
+.tw-tip-icon {
+  display: inline-block; width: 16px; height: 16px; margin-right: 7px;
+  vertical-align: middle;
+}
+.tw-tip-active { color: #f5f2ff; }
+.tw-tip-active .tw-tip-box { background: #282331; border-color: #6d5aa5; }
+/* D-pad cursor for the tab row: a sliding outline separate from the active
+  tab surface, keeping remote focus visible without changing layout. */
 .tw-tip-cursor {
-  position: absolute; opacity: 0; pointer-events: none; border-bottom: 3px solid #f4f4f7;
-  box-sizing: border-box;
+  position: absolute; opacity: 0; pointer-events: none; border: 2px solid #A78BFA;
+  border-radius: 17px; box-sizing: border-box;
   -webkit-transition: left 0.14s ease-out, width 0.14s ease-out, opacity 0.15s ease-out;
   transition: left 0.14s ease-out, width 0.14s ease-out, opacity 0.15s ease-out;
 }
@@ -121,16 +126,61 @@ html, body {
   transition: transform 0.2s ease-out;
 }
 .tw-grid { width: 100%; border-collapse: collapse; table-layout: fixed; }
-.tw-cell { width: 25%; padding: 6px 5px 13px; vertical-align: top; }
+.tw-cell { width: 25%; padding: 8px 5px 18px; vertical-align: top; }
 /* Game covers are big portrait tiles — keep them a touch more spaced. */
-.tw-cell-game { padding: 9px 10px 17px; }
-.tw-cell-inner { position: relative; }
+.tw-cell-game { padding: 10px 10px 20px; }
+.tw-cell-inner {
+  position: relative; background: #1A1D23; border-radius: 8px; overflow: hidden;
+}
 .tw-thumb {
-  width: 100%; height: 167.15625px; display: block; background: #18181b;
-  border: 3px solid transparent; border-radius: 0; box-sizing: border-box;
+  width: 100%; height: 167.15625px; display: block; background: #1A1D23;
+  border: 3px solid #1A1D23; border-radius: 8px; box-sizing: border-box;
   /* keep the bg out from under the transparent border so the gap to the focus
      frame shows the page background, not the placeholder grey. */
   -webkit-background-clip: padding-box; background-clip: padding-box;
+}
+.tw-home .tw-cell-inner.tw-focused .tw-thumb {
+  border-color: #A78BFA;
+}
+.tw-home .tw-home-stream-card { border-radius: 10px; }
+.tw-home-thumb-wrap { position: relative; overflow: hidden; border-radius: 10px; }
+.tw-home-thumb-wrap .tw-thumb { border-radius: 10px; }
+.tw-home-live-badge {
+  position: absolute; left: 8px; top: 8px; height: 19px; padding: 4px 8px;
+  box-sizing: border-box; background: #E9475B; color: #FFFFFF;
+  border-radius: 4px; font-size: 11px; line-height: 11px; font-weight: 700;
+}
+.tw-home-viewers {
+  position: absolute; right: 8px; bottom: 8px; height: 23px; padding: 5px 8px;
+  box-sizing: border-box; background: rgba(11, 13, 16, 0.88); color: #F5F6F8;
+  border-radius: 5px; font-size: 13px; line-height: 13px; font-weight: 500;
+}
+.tw-home .tw-meta.tw-home-meta {
+  position: relative;
+  height: 68px;
+  padding: 10px 10px 13px 58px;
+  box-sizing: border-box;
+}
+.tw-home-avatar {
+  position: absolute; left: 10px; top: 15px; width: 38px; height: 38px;
+  border-radius: 50%; background: #30343F; object-fit: cover;
+}
+.tw-home-avatar-ph { background: #30343F; }
+.tw-home-meta-primary { height: 22px; line-height: 22px; overflow: hidden; }
+.tw-home-meta-category {
+  display: block; float: right; max-width: 42%; margin-left: 8px; overflow: hidden;
+  color: #A5AAB6; font-size: 13px; line-height: 22px; font-weight: 400;
+  text-align: right; text-overflow: ellipsis; white-space: nowrap;
+}
+.tw-home-meta-name {
+  display: block; overflow: hidden; padding-right: 4px; color: #F5F6F8;
+  font-size: 18px; line-height: 22px; font-weight: 600;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.tw-home-meta-title {
+  height: 18px; margin-top: 5px; overflow: hidden; color: #A5AAB6;
+  font-size: 14px; line-height: 18px; font-weight: 400;
+  text-overflow: ellipsis; white-space: nowrap;
 }
 /* Game box art is portrait (285x380): fill the cell width like stream thumbs so
    the cell grows taller and the caption/focus frame line up with the cover. */
@@ -141,7 +191,8 @@ html, body {
    border gives the small gap between this outline and the artwork. */
 .tw-grid-frame {
   position: absolute; opacity: 0; pointer-events: none;
-  outline: 4px solid #f4f4f7;
+  outline: 3px solid #A78BFA; border-radius: 10px;
+  -webkit-box-shadow: 0 0 0 1px #0B0D10; box-shadow: 0 0 0 1px #0B0D10;
   /* Animate the horizontal slide (Left/Right within the row) and the fade
      in/out when focus enters/leaves the grid. width/height/top are NOT animated
      so the load-time resize and mode switches stay instant. */
@@ -152,14 +203,20 @@ html, body {
    artwork inside the thumbnail's transparent border. */
 .tw-meta {
   position: static; box-sizing: border-box;
-  background: transparent; padding: 8px 3px 0;
+  background: #1A1D23; padding: 10px 10px 11px;
 }
-.tw-cell-game .tw-meta { padding: 10px 3px 0; }
+.tw-cell-game .tw-meta { padding: 11px 10px 12px; }
 /* Stream title: the prominent top line, truncated to one line. */
 .tw-meta-title {
-  font-size: 19px; line-height: 23px; font-weight: 500; color: #fff;
+  position: relative; box-sizing: border-box; height: 22px; padding-left: 42px;
+  font-size: 17px; line-height: 22px; font-weight: 500; color: #F5F5F7;
   white-space: nowrap; text-align: left; overflow: hidden; text-overflow: ellipsis;
-  margin-bottom: 4px;
+  margin-bottom: 5px;
+}
+.tw-live-badge {
+  position: absolute; left: 0; top: 3px; height: 16px; padding: 0 5px;
+  background: #A78BFA; color: #0B0D10; border-radius: 3px;
+  font-size: 10px; line-height: 16px; font-weight: 700; letter-spacing: 0;
 }
 /* overflow:hidden makes the row a block formatting context so it contains the
    floated viewer count (Orsay-safe — no flexbox). */
@@ -167,30 +224,45 @@ html, body {
 /* Viewer count floats right; the name takes the rest and ellipsises — one line. */
 .tw-meta-views {
   float: right; margin-left: 12px; font-size: 16px; line-height: 20px;
-  color: #c6c6ce; font-weight: 500;
+  color: #9CA3AF; font-weight: 500;
 }
 .tw-meta-name {
   display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
-  font-size: 16px; line-height: 20px; color: #dedee3; text-align: left;
-  font-weight: 400;
+  font-size: 16px; line-height: 20px; color: #F5F5F7; text-align: left;
+  font-weight: 500;
 }
 /* Games tiles have no title line, so the name is the primary label — bump it
    (and the count) a touch larger than the channel-tile text. */
 .tw-cell-game .tw-meta-row { line-height: 22px; }
-.tw-cell-game .tw-meta-name { font-size: 19px; line-height: 22px; font-weight: 500; color: #fff; }
-.tw-cell-game .tw-meta-views { font-size: 17px; line-height: 22px; }
+.tw-cell-game .tw-meta-name { font-size: 18px; line-height: 22px; font-weight: 500; color: #F5F5F7; }
+.tw-cell-game .tw-meta-views { font-size: 16px; line-height: 22px; }
 
 /* --- Following (sectioned view + offline channel tiles) ------------------ */
+.tw-home { display: none; }
 /* The sectioned view lives inside the same scroller as the flat grid; only
    one is shown at a time. */
 .tw-follow { display: none; }
-.tw-sec { margin: 0 0 18px; }
+.tw-sec { margin: 0 0 28px; }
 .tw-sec-game { margin-left: -5px; margin-right: -5px; }
+.tw-rail-viewport { position: relative; width: 100%; overflow: hidden; }
+.tw-rail-track {
+  position: relative; width: 100%;
+  -webkit-transition: -webkit-transform 0.16s ease-out;
+  transition: transform 0.16s ease-out;
+}
+.tw-grid-rail { display: block; width: auto; table-layout: auto; border-collapse: separate; }
+.tw-grid-rail tr { display: block; white-space: nowrap; }
+.tw-grid-rail .tw-cell {
+  display: inline-block; width: 302px; box-sizing: border-box; white-space: normal;
+}
 /* Section heading; its left padding lines the text up with the thumbnail
    artwork (5px cell padding + 3px transparent thumb border = 8px). */
 .tw-sec-head {
-  font-size: 20px; line-height: 24px; font-weight: 600; color: #efeff1;
-  text-align: left; padding: 4px 8px 9px;
+  font-size: 21px; line-height: 26px; font-weight: 600; color: #F5F5F7;
+  text-align: left; padding: 0 8px 10px; border-bottom: 1px solid #2A2E37;
+}
+.tw-home .tw-sec-head {
+  font-size: 23px; color: #F5F6F8; border-bottom-color: #30343F;
 }
 /* Game/category tiles have 10px cell padding, so the section expands by 5px
    per side and the heading receives the same compensation. */
@@ -458,16 +530,16 @@ html, body {
 /* --- account chip (browser top bar) ------------------------------------- */
 /* Chip sits at the far right (43px edge), matching the logo's height and edge. */
 .tw-account {
-  position: absolute; top: 43px; right: 43px; height: 36px; line-height: 36px;
+  position: absolute; top: 43px; right: 43px; height: 34px; line-height: 34px;
   max-width: 300px; padding: 0 20px; box-sizing: border-box;
-  font-size: 17px; font-weight: 500; text-align: center; color: #eff1f6;
+  font-size: 17px; font-weight: 500; text-align: center; color: #d7d9e2;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  border: 0; border-radius: 0; outline: 0; background: #323239;
-  -webkit-transition: background 0.105s ease-out, color 0.105s ease-out;
-  transition: background 0.105s ease-out, color 0.105s ease-out;
+  border: 1px solid transparent; border-radius: 17px; outline: 0; background: #1A1D23;
+  -webkit-transition: background 0.12s ease-out, color 0.12s ease-out;
+  transition: background 0.12s ease-out, color 0.12s ease-out;
 }
 .tw-account.tw-focused {
-  color: #111318; outline: 0; background: #f4f4f7;
+  color: #fff; outline: 2px solid #A78BFA; outline-offset: 2px; background: #242832;
 }
 
 /* --- login scene -------------------------------------------------------- */

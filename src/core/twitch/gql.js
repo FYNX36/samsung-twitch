@@ -84,6 +84,7 @@
         kind: 'stream',
         login: node.broadcaster.login,
         display: node.broadcaster.displayName || node.broadcaster.login,
+        avatar: node.broadcaster.profileImageURL || '',
         title: node.title || '',
         viewers: node.viewersCount || 0,
         game: (node.game && node.game.name) || '',
@@ -98,7 +99,7 @@
 
     topStreams: function (limit, cursor, onOk, onFail) {
       post('{ streams(first: ' + cap(limit) + afterClause(cursor) + ') { edges { cursor node { ' +
-        'id title viewersCount broadcaster { login displayName } game { name } } } } }',
+        'id title viewersCount broadcaster { login displayName } game { name } } } }',
         function (data) { onOk(mapStreamEdges(data.streams)); }, onFail);
     },
 

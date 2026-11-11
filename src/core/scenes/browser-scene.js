@@ -33,6 +33,20 @@
     });
   }
 
+  function homepageViewerCount(value) {
+    if (value == null || value === '' || !isFinite(Number(value))) { return ''; }
+    var n = Number(value);
+    if (n < 1000) { return String(Math.floor(n)); }
+    var units = [[1e9, 'B'], [1e6, 'M'], [1e3, 'K']];
+    for (var i = 0; i < units.length; i++) {
+      if (n >= units[i][0]) {
+        var amount = n / units[i][0];
+        return String(amount >= 100 ? Math.floor(amount) : Math.floor(amount * 10) / 10) + units[i][1];
+      }
+    }
+    return String(Math.floor(n));
+  }
+
   function offsetTopWithin(el, ancestor) {
     var top = 0;
     while (el && el !== ancestor) {
@@ -85,6 +99,21 @@
     this.fc = 0;               // focused column within that row
     this.fScroll = 0;          // applied vertical scroll offset
     this.fFocused = false;     // a tile is focused (vs. parked on the tab row)
+
+    // --- Channels homepage rails ------------------------------------------
+    this.homeFollowing = [];
+    this.homeDiscover = [];
+    this.homeDiscoverRaw = [];
+    this.homeDiscoverCursor = null;
+    this.homeDiscoverLoading = false;
+    this.homeLoadToken = 0;
+    this.homeFollowReady = false;
+    this.homeDiscoverReady = false;
+    this.homeRows = [];
+    this.hr = 0;
+    this.hc = 0;
+    this.homeScroll = 0;
+    this.homeFocused = false;
   }
 
   var P = BrowserScene.prototype;
@@ -97,9 +126,9 @@
         '<img class="tw-logo" src="assets/logo.png" alt="">' +
         '<div class="tw-account" id="tw-account"><span id="tw-acct-label"></span></div>' +
         '<div class="tw-tips" id="tw-tips">' +
-          '<span class="tw-tip" id="tw-tip-all"><span class="tw-tip-box"><span class="tw-tip-label" id="tw-l-all"></span></span></span>' +
-          '<span class="tw-tip" id="tw-tip-games"><span class="tw-tip-box"><span class="tw-tip-label" id="tw-l-games"></span></span></span>' +
-          '<span class="tw-tip" id="tw-tip-followed"><span class="tw-tip-box"><span class="tw-tip-label" id="tw-l-followed"></span></span></span>' +
+          '<span class="tw-tip" id="tw-tip-all"><span class="tw-tip-box"><img class="tw-tip-icon" src="assets/nav-live.svg" width="16" height="16" alt=""><span class="tw-tip-label" id="tw-l-all"></span></span></span>' +
+          '<span class="tw-tip" id="tw-tip-games"><span class="tw-tip-box"><img class="tw-tip-icon" src="assets/nav-games.svg" width="16" height="16" alt=""><span class="tw-tip-label" id="tw-l-games"></span></span></span>' +
+          '<span class="tw-tip" id="tw-tip-followed"><span class="tw-tip-box"><img class="tw-tip-icon" src="assets/nav-followed.svg" width="16" height="16" alt=""><span class="tw-tip-label" id="tw-l-followed"></span></span></span>' +
           '<div class="tw-tip-cursor" id="tw-tip-cursor"></div>' +
         '</div>' +
       '</div>' +
@@ -116,6 +145,7 @@
         '</div>' +
         '<div class="tw-grid-scroll" id="tw-grid-scroll">' +
           '<table class="tw-grid" id="tw-grid"></table>' +
+          '<div class="tw-home" id="tw-home"></div>' +
           '<div class="tw-follow" id="tw-follow"></div>' +
         '</div>' +
         '<div class="tw-grid-frame" id="tw-grid-frame"></div>' +
@@ -228,6 +258,15 @@
     dom.hide(dom.get('tw-b-loading'));
     dom.show(dom.get('tw-grid-wrap'));
     dom.show(dom.get('tw-grid'), 'table'); // flat table (Channels/Games/Streams)
+    dom.hide(dom.get('tw-home'));
+    dom.hide(dom.get('tw-follow'));
+    dom.hide(dom.get('tw-follow-empty'));
+  };
+  P.showHome = function () {
+    dom.hide(dom.get('tw-b-loading'));
+    dom.show(dom.get('tw-grid-wrap'));
+    dom.hide(dom.get('tw-grid'));
+    dom.show(dom.get('tw-home'));
     dom.hide(dom.get('tw-follow'));
     dom.hide(dom.get('tw-follow-empty'));
   };
@@ -236,6 +275,7 @@
     dom.hide(dom.get('tw-b-loading'));
     dom.show(dom.get('tw-grid-wrap'));
     dom.hide(dom.get('tw-grid'));
+    dom.hide(dom.get('tw-home'));
     dom.show(dom.get('tw-follow'));
     dom.hide(dom.get('tw-follow-empty'));
   };
@@ -246,6 +286,7 @@
     dom.text(dom.get('tw-follow-empty'), text || TW.i18n.t('FOLLOW_NONE'));
     dom.show(dom.get('tw-grid-wrap'));
     dom.hide(dom.get('tw-grid'));
+    dom.hide(dom.get('tw-home'));
     dom.hide(dom.get('tw-follow'));
     dom.show(dom.get('tw-follow-empty'));
   };
@@ -260,6 +301,326 @@
     dom.html(dom.get('tw-grid'), '');
     this.setScroll(0);   // jump back to the top row for the new content
     this.hideFrame();
+  };
+
+  P.cleanHome = function () {
+    this.homeLoadToken++;
+    this.homeFollowing = [];
+    this.homeDiscover = [];
+    this.homeDiscoverRaw = [];
+    this.homeDiscoverCursor = null;
+    this.homeDiscoverLoading = false;
+    this.homeFollowReady = false;
+    this.homeDiscoverReady = false;
+    this.homeRows = [];
+    this.hr = 0;
+    this.hc = 0;
+    this.homeScroll = 0;
+    this.homeFocused = false;
+    this.items = [];
+    this.cells = [];
+    this.rowEls = [];
+    this.cursor = null;
+    dom.html(dom.get('tw-home'), '');
+    this.setScroll(0);
+    this.hideFrame();
+  };
+
+  P.enterHome = function () {
+    this.cleanHome();
+    this.loading = true;
+    this.showLoading();
+    if (this.authEnabled && TW.auth.isLoggedIn()) {
+      this.loadHomeFollowing();
+    } else {
+      this.homeFollowReady = true;
+      this.homeMaybeRender();
+    }
+    this.loadHomeDiscoverPage(true);
+  };
+
+  // The homepage reuses the same followed-stream loader as the Following tab,
+  // but keeps its result separate from the full sectioned Following model.
+  P.loadHomeFollowing = function () {
+    var self = this;
+    var token = this.homeLoadToken;
+    this.fLive = [];
+    this.loadFollowLive(function (status) {
+      if (token !== self.homeLoadToken || self.mode !== MODE.ALL) { return; }
+      self.homeFollowing = (status === 'scope' || status === -1) ? [] : self.fLive.slice();
+      self.homeFollowReady = true;
+      self.homeMaybeRender();
+    });
+  };
+
+  P.homeFilterDiscover = function () {
+    var followed = {}, seen = {}, out = [];
+    for (var i = 0; i < this.homeFollowing.length; i++) {
+      followed[this.homeFollowing[i].login] = true;
+    }
+    for (var j = 0; j < this.homeDiscoverRaw.length; j++) {
+      var item = this.homeDiscoverRaw[j];
+      if (!item || followed[item.login] || seen[item.login]) { continue; }
+      seen[item.login] = true;
+      out.push(item);
+    }
+    this.homeDiscover = out;
+    this.items = out;
+  };
+
+  P.loadHomeDiscoverPage = function (initial) {
+    if (this.homeDiscoverLoading || (!initial && this.homeDiscoverCursor === false)) { return; }
+    this.homeDiscoverLoading = true;
+    var self = this;
+    var token = this.homeLoadToken;
+    var cursor = initial ? null : (this.homeDiscoverCursor || null);
+    TW.api.topStreams(cursor, function (result) {
+      if (token !== self.homeLoadToken || self.mode !== MODE.ALL) { return; }
+      var items = (result && result.items) || [];
+      for (var i = 0; i < items.length; i++) { self.homeDiscoverRaw.push(items[i]); }
+      self.homeDiscoverCursor = result && result.cursor ? result.cursor : false;
+      self.homeDiscoverLoading = false;
+      if (initial) { self.homeDiscoverReady = true; }
+      self.homeFilterDiscover();
+      if (initial) { self.homeMaybeRender(); }
+      else {
+        var wasFocused = self.homeFocused;
+        self.renderHome();
+        if (wasFocused && self.homeRows.length) {
+          self.clampHomeCursor();
+          self.homeAddFocus();
+        }
+      }
+    }, function () {
+      if (token !== self.homeLoadToken || self.mode !== MODE.ALL) { return; }
+      self.homeDiscoverLoading = false;
+      self.homeDiscoverCursor = false;
+      if (initial) {
+        self.homeDiscoverReady = true;
+        self.homeMaybeRender();
+      }
+    });
+  };
+
+  P.homeMaybeRender = function () {
+    if (!this.homeFollowReady || !this.homeDiscoverReady) { return; }
+    this.homeFilterDiscover();
+    this.renderHome();
+    this.loading = false;
+    if (!this.homeFollowing.length && !this.homeDiscover.length) {
+      this.showDialog(TW.i18n.t('ERROR_LOAD'));
+      return;
+    }
+    this.showHome();
+    this.loadHomeFollowingAvatars();
+
+    if (this.onTopNav) { return; }
+    if (!this.homeRows.length) { return; }
+      
+    this.homeFocused = true;
+    this.clampHomeCursor();
+    this.homeAddFocus();
+  };
+
+  P.homeAvatarElement = function (cell) {
+    if (!cell || !cell.firstChild || !cell.firstChild.getElementsByTagName) { return null; }
+    var imgs = cell.firstChild.getElementsByTagName('img');
+    for (var i = 0; i < imgs.length; i++) {
+      if ((' ' + imgs[i].className + ' ').indexOf(' tw-home-avatar ') >= 0) { return imgs[i]; }
+    }
+    return null;
+  };
+
+  P.loadHomeFollowingAvatars = function () {
+    if (!TW.api.profileImages || !this.homeFollowing.length) { return; }
+    var ids = [], self = this, token = this.homeLoadToken;
+    for (var i = 0; i < this.homeFollowing.length; i++) {
+      if (this.homeFollowing[i].userId) { ids.push(this.homeFollowing[i].userId); }
+    }
+    if (!ids.length) { return; }
+    TW.api.profileImages(ids, function (profiles) {
+      if (token !== self.homeLoadToken || self.mode !== MODE.ALL) { return; }
+      var row = self.homeRows.length ? self.homeRows[0] : null;
+      if (!row) { return; }
+      for (var j = 0; j < self.homeFollowing.length; j++) {
+        var item = self.homeFollowing[j];
+        var profile = profiles[item.userId];
+        if (!profile) { continue; }
+        item.avatar = profile.avatar || '';
+        var avatar = self.homeAvatarElement(row.cells[j]);
+        if (avatar && item.avatar) {
+          dom.attr(avatar, 'src', item.avatar);
+          dom.removeClass(avatar, 'tw-home-avatar-ph');
+        }
+      }
+    });
+  };
+
+  P.appendHomeRail = function (parent, title, items, id) {
+    var sec = dom.create('div', 'tw-sec tw-home-section');
+    var head = dom.create('div', 'tw-sec-head'); dom.text(head, title); sec.appendChild(head);
+    var viewport = dom.create('div', 'tw-rail-viewport');
+    var track = dom.create('div', 'tw-rail-track');
+    var table = dom.create('table', 'tw-grid tw-grid-rail');
+    var row = dom.create('tr'), cells = [];
+    for (var i = 0; i < items.length; i++) {
+      var cell = this.createCell(items[i], true);
+      row.appendChild(cell); cells.push(cell);
+    }
+    table.appendChild(row);
+    track.appendChild(table);
+    viewport.appendChild(track);
+    sec.appendChild(viewport);
+    parent.appendChild(sec);
+    this.homeRows.push({
+      id: id, el: row, cells: cells, items: items, sectionFirst: true,
+      railViewport: viewport, railTrack: track, railScroll: 0
+    });
+  };
+
+  P.renderHome = function () {
+    var home = dom.get('tw-home');
+    dom.html(home, '');
+    this.homeRows = [];
+    if (this.homeFollowing.length) {
+      this.appendHomeRail(home, TW.i18n.t('FOLLOW_LIVE'), this.homeFollowing, 'following');
+    }
+    if (this.homeDiscover.length) {
+      this.appendHomeRail(home, 'Discover live channels', this.homeDiscover, 'discover');
+    }
+    if (this.homeRows.length) { this.clampHomeCursor(); }
+  };
+
+  P.clampHomeCursor = function () {
+    if (this.hr > this.homeRows.length - 1) { this.hr = this.homeRows.length - 1; }
+    if (this.hr < 0) { this.hr = 0; }
+    var row = this.homeRows[this.hr];
+    if (row && this.hc > row.cells.length - 1) { this.hc = row.cells.length - 1; }
+    if (this.hc < 0) { this.hc = 0; }
+  };
+
+  P.homeCell = function () {
+    var row = this.homeRows[this.hr];
+    return row && row.cells[this.hc];
+  };
+
+  P.homeCardCenter = function (row, cell) {
+    if (cell && cell.getBoundingClientRect) {
+      var rect = cell.getBoundingClientRect();
+      return (rect.left + rect.right) / 2;
+    }
+    return (cell.offsetLeft || 0) - (row.railScroll || 0) + ((cell.offsetWidth || 0) / 2);
+  };
+
+  P.homeNearestColumn = function (row) {
+    var currentRow = this.homeRows[this.hr];
+    var current = this.homeCell();
+    if (!row || !row.cells.length || !currentRow || !current) { return 0; }
+    var x = this.homeCardCenter(currentRow, current);
+    var best = 0;
+    var distance = Infinity;
+    for (var i = 0; i < row.cells.length; i++) {
+      var nextDistance = Math.abs(this.homeCardCenter(row, row.cells[i]) - x);
+      if (nextDistance < distance) { distance = nextDistance; best = i; }
+    }
+    return best;
+  };
+
+  P.homeRemoveFocus = function () {
+    var cell = this.homeCell();
+    if (cell) { dom.removeClass(cell.firstChild, 'tw-focused'); }
+  };
+
+  P.homeRailScrollTo = function (row) {
+    if (!row || !row.railViewport || !row.railTrack) { return; }
+    var cell = row.cells[this.hc];
+    if (!cell) { return; }
+    var viewport = row.railViewport;
+    var visible = viewport.clientWidth || viewport.offsetWidth || 0;
+    var left = cell.offsetLeft || 0;
+    var right = left + (cell.offsetWidth || 0);
+    var current = row.railScroll || 0;
+    var next = current;
+    if (left < current) { next = left; }
+    else if (right > current + visible) { next = right - visible; }
+    if (next < 0) { next = 0; }
+    row.railScroll = next;
+    var transform = 'translate3d(' + (-next) + 'px,0,0)';
+    row.railTrack.style.webkitTransform = transform;
+    row.railTrack.style.transform = transform;
+  };
+
+  P.homeScrollTo = function () {
+    var row = this.homeRows[this.hr];
+    if (!row) { return; }
+    var off = offsetTopWithin(row.el, dom.get('tw-home')) - 46;
+    if (off < 0) { off = 0; }
+    var max = this.homeScrollMax();
+    if (off > max) { off = max; }
+    this.homeScroll = off;
+    this.setScroll(off);
+  };
+
+  P.homeScrollMax = function () {
+    var home = dom.get('tw-home');
+    var wrap = dom.get('tw-grid-wrap');
+    var content = home ? (home.offsetHeight || home.scrollHeight || 0) : 0;
+    var viewport = wrap ? (wrap.clientHeight || wrap.offsetHeight || 0) : 0;
+    var max = content - viewport;
+    return max > 0 ? max : 0;
+  };
+
+  P.homeAddFocus = function () {
+    var cell = this.homeCell();
+    var row = this.homeRows[this.hr];
+    if (!cell || !row) { return; }
+    dom.addClass(cell.firstChild, 'tw-focused');
+    this.hideFrame();
+    this.homeRailScrollTo(row);
+    this.homeScrollTo();
+    if (row.id === 'discover' && this.hc + TW.config.columns * 2 >= row.items.length &&
+        this.homeDiscoverCursor && !this.homeDiscoverLoading) {
+      this.loadHomeDiscoverPage(false);
+    }
+  };
+
+  P.homeMove = function (r, c) {
+    this.homeRemoveFocus();
+    var sameRow = r === this.hr;
+    var row = this.homeRows[r];
+    var next = sameRow ? c : this.homeNearestColumn(row);
+    this.hr = r;
+    this.hc = (row && next > row.cells.length - 1) ? row.cells.length - 1 : (next < 0 ? 0 : next);
+    this.homeAddFocus();
+  };
+
+  P.activateHome = function () {
+    var row = this.homeRows[this.hr];
+    var item = row && row.items[this.hc];
+    if (item) { TW.app.goToChannel(item.login, { stream: item }); }
+  };
+
+  P.handleHomeKey = function (key) {
+    if (key === KEY.UP) {
+      if (this.homeRows.length && this.hr > 0) { this.homeMove(this.hr - 1, this.hc); }
+      else { this.focusTopNav(); }
+      return true;
+    }
+    if (key === KEY.DOWN) {
+      if (this.hr < this.homeRows.length - 1) { this.homeMove(this.hr + 1, this.hc); }
+      return true;
+    }
+    if (key === KEY.LEFT) {
+      if (this.hc > 0) { this.homeMove(this.hr, this.hc - 1); }
+      return true;
+    }
+    if (key === KEY.RIGHT) {
+      var row = this.homeRows[this.hr];
+      if (row && this.hc < row.cells.length - 1) { this.homeMove(this.hr, this.hc + 1); }
+      return true;
+    }
+    if (key === KEY.ENTER) { this.activateHome(); return true; }
+    return false;
   };
 
   // Translate the grid so the focused row sits in the top ("first") row slot.
@@ -363,6 +724,10 @@
 
   P.restoreFocus = function () {
     if (this.onTopNav) { this.highlightNav(); return; }
+    if (this.mode === MODE.ALL) {
+      if (this.homeFocused && this.homeRows.length) { this.homeAddFocus(); }
+      return;
+    }
     if (this.mode === MODE.FOLLOWED) {
       if (this.fFocused && this.fRows.length) { this.followAddFocus(); }
       return;
@@ -522,8 +887,9 @@
     this.padLastRow();
   };
 
-  P.createCell = function (item) {
+  P.createCell = function (item, homepageStream) {
     var isGame = item.kind === 'game';
+    var isHomeStream = !!homepageStream && !isGame && item.kind === 'stream';
     var td = dom.create('td', 'tw-cell' + (isGame ? ' tw-cell-game' : ''));
     var img = isGame ? item.box : item.thumb;
     var imgSrc = img ? ' src="' + dom.escape(img) + '"' : '';
@@ -532,12 +898,33 @@
     // (right) on one line. Games have no title — just the name + count row.
     var name = dom.escape(item.display || '');
     var title = isGame ? '' : dom.escape(item.title || '');
-    var views = TW.shortNumber(item.viewers);
+    var views = isHomeStream ? homepageViewerCount(item.viewers) : TW.shortNumber(item.viewers);
+    var category = dom.escape(item.game || '');
+    if (isHomeStream) {
+      var avatarSrc = item.avatar ? ' src="' + dom.escape(item.avatar) + '"' : '';
+      td.innerHTML =
+        '<div class="tw-cell-inner tw-home-stream-card">' +
+          '<div class="tw-home-thumb-wrap">' +
+            '<img class="tw-thumb"' + imgSize + imgSrc + ' alt="" onerror="this.removeAttribute(\'src\')">' +
+            '<span class="tw-home-live-badge">LIVE</span>' +
+            (views ? '<span class="tw-home-viewers">' + views + '</span>' : '') +
+          '</div>' +
+          '<div class="tw-meta tw-home-meta">' +
+            '<img class="tw-home-avatar tw-home-avatar-ph" width="38" height="38"' + avatarSrc + ' alt="" onerror="this.removeAttribute(\'src\')">' +
+            '<div class="tw-home-meta-primary">' +
+              (category ? '<span class="tw-home-meta-category">' + category + '</span>' : '') +
+              '<span class="tw-home-meta-name">' + name + '</span>' +
+            '</div>' +
+            '<div class="tw-home-meta-title">' + title + '</div>' +
+          '</div>' +
+        '</div>';
+      return td;
+    }
     td.innerHTML =
       '<div class="tw-cell-inner">' +
         '<img class="tw-thumb"' + imgSize + imgSrc + ' alt="" onerror="this.removeAttribute(\'src\')">' +
         '<div class="tw-meta">' +
-          (title ? '<div class="tw-meta-title">' + title + '</div>' : '') +
+          (!isGame ? '<div class="tw-meta-title"><span class="tw-live-badge">LIVE</span>' + title + '</div>' : '') +
           '<div class="tw-meta-row">' +
             '<span class="tw-meta-views">' + views + '</span>' +
             '<span class="tw-meta-name">' + name + '</span>' +
@@ -630,7 +1017,7 @@
 
   // Load EVERY live followed channel first (usually a single page) so the offline
   // section can subtract them; then page through all follows.
-  P.loadFollowLive = function () {
+  P.loadFollowLive = function (done) {
     var self = this;
     function page(cursor) {
       TW.api.followedStreams(cursor, function (res) {
@@ -638,21 +1025,27 @@
           self.fLive.push(res.items[i]);
           self.fLiveLogins[res.items[i].login] = true;
         }
-        if (res.cursor) { page(res.cursor); } else { sortByViewersDesc(self.fLive); self.loadFollowOffline(); }
+        if (res.cursor) { page(res.cursor); }
+        else {
+          sortByViewersDesc(self.fLive);
+          if (done) { done(); } else { self.loadFollowOffline(); }
+        }
       }, function (status) {
         if (status === 'scope') {
+          if (done) { done(status); return; }
           self.loading = false;
           self.updateAccount();
           self.showFollowEmpty(TW.i18n.t('FOLLOW_SCOPE_ERR'));
           return;
         }
         if (status === -1) {
+          if (done) { done(status); return; }
           self.loading = false;
           self.updateAccount();
           self.showFollowEmpty(TW.i18n.t('FOLLOW_LOGIN'));
           return;
         }
-        self.loadFollowOffline();
+        if (done) { done(status); } else { self.loadFollowOffline(); }
       });   // proceed with what we have
     }
     page(null);
@@ -733,9 +1126,34 @@
 
   P.appendFollowSection = function (parent, title, items, kind) {
     var offline = (kind === 'channel');
+    var rail = (kind === 'stream');
     var cols = offline ? OFFLINE_COLUMNS : TW.config.columns;
     var sec = dom.create('div', 'tw-sec' + (kind === 'game' ? ' tw-sec-game' : ''));
     var head = dom.create('div', 'tw-sec-head'); dom.text(head, title); sec.appendChild(head);
+
+    if (rail) {
+      var viewport = dom.create('div', 'tw-rail-viewport');
+      var track = dom.create('div', 'tw-rail-track');
+      var railTable = dom.create('table', 'tw-grid tw-grid-rail');
+      var railRow = dom.create('tr'), railCells = [], railItems = [];
+      for (var r = 0; r < items.length; r++) {
+        var railCell = this.createCell(items[r]);
+        railRow.appendChild(railCell);
+        railCells.push(railCell);
+        railItems.push(items[r]);
+      }
+      railTable.appendChild(railRow);
+      track.appendChild(railTable);
+      viewport.appendChild(track);
+      sec.appendChild(viewport);
+      parent.appendChild(sec);
+      this.fRows.push({
+        el: railRow, cells: railCells, items: railItems, sectionFirst: true,
+        railViewport: viewport, railTrack: track, railScroll: 0, preferredColumn: null
+      });
+      return;
+    }
+
     var table = dom.create('table', offline ? 'tw-grid tw-grid-6' : 'tw-grid');
     for (var i = 0, sectionRow = 0; i < items.length; sectionRow++) {
       var tr = dom.create('tr'), cells = [], rowItems = [];
@@ -750,7 +1168,10 @@
         }
       }
       table.appendChild(tr);
-      this.fRows.push({ el: tr, cells: cells, items: rowItems, sectionFirst: sectionRow === 0 });
+      this.fRows.push({
+        el: tr, cells: cells, items: rowItems, sectionFirst: sectionRow === 0,
+        preferredColumn: null
+      });
     }
     sec.appendChild(table);
     parent.appendChild(sec);
@@ -780,16 +1201,44 @@
 
   P.followMove = function (r, c) {
     this.followRemoveFocus();
+    var previous = this.fRows[this.fr];
+    if (previous) { previous.preferredColumn = this.fc; }
+    var sameRow = r === this.fr;
     this.fr = r;
     var row = this.fRows[r];
-    this.fc = (row && c > row.cells.length - 1) ? row.cells.length - 1 : (c < 0 ? 0 : c);
+    var next = !sameRow && row && row.preferredColumn != null ? row.preferredColumn : c;
+    this.fc = (row && next > row.cells.length - 1) ? row.cells.length - 1 : (next < 0 ? 0 : next);
+    if (row) { row.preferredColumn = this.fc; }
     this.followAddFocus();
+  };
+
+  P.followRailScrollTo = function (row) {
+    if (!row || !row.railViewport || !row.railTrack) { return; }
+    var cell = row.cells[this.fc];
+    if (!cell) { return; }
+    var viewport = row.railViewport;
+    var track = row.railTrack;
+    var visible = viewport.clientWidth || viewport.offsetWidth || 0;
+    var left = cell.offsetLeft || 0;
+    var right = left + (cell.offsetWidth || 0);
+    var current = row.railScroll || 0;
+    var next = current;
+    if (left < current) { next = left; }
+    else if (right > current + visible) { next = right - visible; }
+    if (next < 0) { next = 0; }
+    var max = (track.offsetWidth || 0) - visible;
+    if (max > 0 && next > max) { next = max; }
+    row.railScroll = next;
+    var transform = 'translate3d(' + (-next) + 'px,0,0)';
+    track.style.webkitTransform = transform;
+    track.style.transform = transform;
   };
 
   P.followAddFocus = function () {
     var c = this.followCell();
     if (!c) { return; }
     dom.addClass(c.firstChild, 'tw-focused');
+    this.followRailScrollTo(this.fRows[this.fr]);
     this.followScrollTo();
     this.followFrame();
     // Prefetch the next page of offline channels as focus nears the bottom.
@@ -844,6 +1293,7 @@
     var img = inner.getElementsByTagName('img')[0];
     var target = round ? (inner.firstChild || inner) : (img || inner);
     var box = this.frameTargetBox(inner, target, this.followInnerTop(inner) - this.fScroll);
+    if (this.fRows[this.fr].railScroll) { box.left -= this.fRows[this.fr].railScroll; }
     var reappearing = (frame.style.opacity !== '1');
     if (reappearing) { frame.style.webkitTransition = frame.style.transition = 'none'; }
     frame.style.left = box.left + 'px';
@@ -912,7 +1362,9 @@
     if (!this.authEnabled && mode === MODE.FOLLOWED) { mode = MODE.ALL; }
     if (mode === this.mode && !force) { return; }
     this.applyModeChrome(mode);
-    if (mode === MODE.FOLLOWED) {
+    if (mode === MODE.ALL) {
+      this.enterHome();
+    } else if (mode === MODE.FOLLOWED) {
       this.enterFollowing();
     } else {
       this.refresh();
@@ -965,6 +1417,7 @@
     if (this.onTopNav) { return this.handleTopNavKey(key); }
     if (this.loading) { return true; }
 
+    if (this.mode === MODE.ALL) { return this.handleHomeKey(key); }
     if (this.mode === MODE.FOLLOWED) { return this.handleFollowKey(key); }
     return this.handleGridKey(key);
   };
@@ -1046,6 +1499,7 @@
 
   P.focusTopNav = function () {
     this.removeFocus();
+    this.homeRemoveFocus();
     this.followRemoveFocus();
     this.hideFrame();   // no tile is selected while the tab row holds focus
     this.onTopNav = true;
@@ -1082,7 +1536,13 @@
   P.leaveTopNav = function () {
     // Following with zero tiles: nothing to drop into, so stay on the tab row.
     if (this.mode === MODE.FOLLOWED && !this.fRows.length) { return; }
+    if (this.mode === MODE.ALL && !this.homeRows.length) { return; }
     this.clearNavFocus();
+    if (this.mode === MODE.ALL) {
+      this.homeFocused = true;
+      this.homeMove(this.hr, this.hc);
+      return;
+    }
     if (this.mode === MODE.FOLLOWED) { this.fFocused = true; this.followMove(0, this.followEntryColumn()); return; }
     // Always drop into the first row; the column is fixed by the focused top-row
     // item (see gridEntryColumn), not the previously memorized column.

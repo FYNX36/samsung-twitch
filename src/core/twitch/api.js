@@ -55,6 +55,9 @@
     followedStreams: function (cursor, onOk, onFail) {
       TW.twitch.helix.followedStreams(cursor, onOk, onFail);
     },
+    profileImages: function (ids, onOk, onFail) {
+      TW.twitch.helix.profileImages(ids, onOk, onFail);
+    },
     // Categories the logged-in user follows that currently have live viewers.
     followedGames: function (onOk, onFail) {
       withLogin(function (login) { backend().followedGames(login, 100, onOk, onFail); }, onFail);
